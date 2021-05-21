@@ -1,0 +1,44 @@
+name: Gotest
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        isolated_backend_test: ['']
+        isolated_validator_test: ['']
+        include:
+          # google pub/sub requires protobuf, and aws requires jsonschema
+          - isolated_backend_test: google
+            isolated_validator_test: protobuf
+          - isolated_backend_test: aws
+            isolated_validator_test: jsonschema
+    steps:
+      - id: setup
+        name: Setup Golang
+        uses: actions/setup-go@v2
+        with:
+          go-version: '1.16'
+
+      - id: checkout
+        name: Checkout PR
+        uses: actions/checkout@v2
+
+      - id: install
+        name: Install Deps
+        run: go get ./...
+
+      - id: gotest
+        name: Run Go test
+        run: make test
+        env:
+          GITHUB_CI: true
+          ISOLATED_BACKEND_TEST: ${{ matrix.isolated_backend_test }}
+          ISOLATED_VALIDATOR_TEST: ${{ matrix.isolated_validator_test }}
