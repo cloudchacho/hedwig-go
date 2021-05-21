@@ -64,7 +64,7 @@ Note that the schema file only contains definitions for major versions. This is 
 
 Optionally, a key `x-versions` may be used to list full versions under a major version.
 
-For an example, see test hedwig schema: https://github.com/cloudchacho/hedwig-go/blob/master/hedwig/schema.json.
+For an example, see test hedwig schema: https://github.com/cloudchacho/hedwig-go/blob/main/hedwig/schema.json.
 
 Callbacks
 

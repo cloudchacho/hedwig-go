@@ -3,7 +3,7 @@ name: Go Checks
 on:
   push:
     branches:
-      - master
+      - main
     paths:
       - '**.go'
       - '.github/workflows/go-syntax.yml'
