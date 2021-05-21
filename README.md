@@ -1,9 +1,9 @@
 # Hedwig Library for Go
 
-[![Build Status](https://github.com/Standard-Cognition/hedwig-go/checks)](https://github.com/github/Standard-Cognition/hedwig-go/workflows/gotest.yml/badge.svg)
-[![Go Report Card](https://goreportcard.com/badge/github.com/Standard-Cognition/hedwig-go)](https://goreportcard.com/report/github.com/Standard-Cognition/hedwig-go)
-[![Godoc](https://godoc.org/github.com/Standard-Cognition/hedwig-go?status.svg)](http://godoc.org/github.com/Standard-Cognition/hedwig-go)
-[![Coverage](https://img.shields.io/coveralls/Standard-Cognition/hedwig-go/master.svg?style=flat-square)](https://coveralls.io/r/Standard-Cognition/hedwig-go)
+[![Build Status](https://github.com/cloudchacho/hedwig-go/checks)](https://github.com/github/cloudchacho/hedwig-go/workflows/gotest.yml/badge.svg)
+[![Go Report Card](https://goreportcard.com/badge/github.com/cloudchacho/hedwig-go)](https://goreportcard.com/report/github.com/cloudchacho/hedwig-go)
+[![Godoc](https://godoc.org/github.com/cloudchacho/hedwig-go?status.svg)](http://godoc.org/github.com/cloudchacho/hedwig-go)
+[![Coverage](https://img.shields.io/coveralls/cloudchacho/hedwig-go/master.svg?style=flat-square)](https://coveralls.io/r/cloudchacho/hedwig-go)
 
 
 Hedwig is a inter-service communication bus that works on AWS SQS/SNS, while keeping things pretty simple and
@@ -35,7 +35,7 @@ configuration easier: see [Terraform](https://github.com/Automatic/hedwig-terraf
 First, install the library:
 
 ```bash
-go get github.com/Standard-Cognition/hedwig-go
+go get github.com/cloudchacho/hedwig-go
 ```
 
 Create a JSON-schema and save as ``schema.json``:
@@ -156,7 +156,7 @@ Install go1.11.x
 
 ```bash
 
-$ cd ${GOPATH}/src/github.com/Standard-Cognition/hedwig-go
+$ cd ${GOPATH}/src/github.com/cloudchacho/hedwig-go
 $ go build
 ```
 
@@ -171,7 +171,7 @@ $ make test
 
 We use GitHub issues for tracking bugs and feature requests.
 
-* If it turns out that you may have found a bug, please [open an issue](https://github.com/Standard-Cognition/hedwig-go/issues/new>)
+* If it turns out that you may have found a bug, please [open an issue](https://github.com/cloudchacho/hedwig-go/issues/new>)
 
 ## Release notes
 

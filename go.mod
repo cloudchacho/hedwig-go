@@ -1,4 +1,4 @@
-module github.com/Standard-Cognition/hedwig-go
+module github.com/cloudchacho/hedwig-go
 
 go 1.16
 
