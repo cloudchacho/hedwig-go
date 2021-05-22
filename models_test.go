@@ -1,7 +1,4 @@
 /*
- * Copyright 2017, Automatic Inc.
- * All rights reserved.
- *
  * Author: Michael Ngo
  */
 
