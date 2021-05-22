@@ -15,6 +15,7 @@ import (
 
 // IPublisher handles all publish related functions
 type IPublisher interface {
+	// Publish a message on Hedwig infrastructure
 	Publish(ctx context.Context, message *Message) (string, error)
 }
 

@@ -27,6 +27,7 @@ type awsBackend struct {
 	sns snsiface.SNSAPI
 }
 
+// AWSMetadata is additional metadata associated with a message
 type AWSMetadata struct {
 	// AWS receipt identifier
 	ReceiptHandle string
@@ -64,6 +65,7 @@ func (a *awsBackend) getSQSQueueURL(ctx context.Context) (*string, error) {
 	return out.QueueUrl, nil
 }
 
+// Publish a message represented by the payload, with specified attributes to the specific topic
 func (a *awsBackend) Publish(ctx context.Context, message *hedwig.Message, payload []byte, attributes map[string]string, topic string) (string, error) {
 	snsTopic := a.getSNSTopic(topic)
 	var payloadStr string
@@ -99,6 +101,8 @@ func (a *awsBackend) Publish(ctx context.Context, message *hedwig.Message, paylo
 	return *result.MessageId, nil
 }
 
+// Receive messages from configured queue(s) and provide it through the callback. This should run indefinitely
+// until the context is cancelled. Provider metadata should include all info necessary to ack/nack a message.
 func (a *awsBackend) Receive(ctx context.Context, numMessages uint32, visibilityTimeoutS uint32, callback hedwig.ConsumerCallback) error {
 	queueURL, err := a.getSQSQueueURL(ctx)
 	if err != nil {
