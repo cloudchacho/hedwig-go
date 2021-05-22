@@ -3,7 +3,7 @@
 [![Build Status](https://github.com/cloudchacho/hedwig-go/checks)](https://github.com/github/cloudchacho/hedwig-go/workflows/gotest.yml/badge.svg)
 [![Go Report Card](https://goreportcard.com/badge/github.com/cloudchacho/hedwig-go)](https://goreportcard.com/report/github.com/cloudchacho/hedwig-go)
 [![Godoc](https://godoc.org/github.com/cloudchacho/hedwig-go?status.svg)](http://godoc.org/github.com/cloudchacho/hedwig-go)
-[![Coverage](https://img.shields.io/coveralls/cloudchacho/hedwig-go/main.svg?style=flat-square)](https://coveralls.io/r/cloudchacho/hedwig-go)
+[![Coverage](https://img.shields.io/coveralls/cloudchacho/hedwig-go/master.svg?style=flat-square)](https://coveralls.io/r/cloudchacho/hedwig-go)
 
 
 Hedwig is a inter-service communication bus that works on AWS SQS/SNS, while keeping things pretty simple and
@@ -175,7 +175,11 @@ We use GitHub issues for tracking bugs and feature requests.
 
 ## Release notes
 
-**Current version: v1.0.1-dev**
+**Current version: v2.0.0-dev**
+
+### v2.0.0
+
+- Re-organize validators and backends to be more modular to prepare for GCP / Protobuf
 
 ### v1.0.0
 

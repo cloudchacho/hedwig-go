@@ -9,16 +9,12 @@ package hedwig
 
 import (
 	"context"
-
-	"github.com/aws/aws-lambda-go/events"
-	"github.com/pkg/errors"
 )
 
 // ListenRequest represents a request to listen for messages
 type ListenRequest struct {
 	NumMessages        uint32 // default 1
 	VisibilityTimeoutS uint32 // defaults to queue configuration
-	LoopCount          uint32 // defaults to infinite loops
 }
 
 // IQueueConsumer represents a hedwig queue consumer
@@ -28,23 +24,77 @@ type IQueueConsumer interface {
 	// This function never returns by default. Possible shutdown methods:
 	// 1. Cancel the context - returns immediately.
 	// 2. Set a deadline on the context of less than 10 seconds - returns after processing current messages.
-	// 3. Run for limited number of loops by setting LoopCount on the request - returns after running loop a finite
-	// number of times
-	ListenForMessages(ctx context.Context, request *ListenRequest) error
+	ListenForMessages(ctx context.Context, request ListenRequest) error
 }
-
-// ILambdaConsumer represents a lambda event consumer
-type ILambdaConsumer interface {
-	// HandleLambdaInput processes hedwig messages for the provided message types for Lambda apps
-	HandleLambdaEvent(ctx context.Context, snsEvent events.SNSEvent) error
-}
-
-const sqsWaitTimeoutSeconds int64 = 20
-
-// ErrRetry should cause the task to retry, but not treat the retry as an error
-var ErrRetry = errors.New("Retry error")
 
 type consumer struct {
-	awsClient iAmazonWebServicesClient
+	backend   IBackend
 	settings  *Settings
+	validator IMessageValidator
+}
+
+type queueConsumer struct {
+	consumer
+}
+
+func (c *queueConsumer) processMessage(ctx context.Context, payload []byte, attributes map[string]string, providerMetadata interface{}) {
+
+	message, err := c.validator.Deserialize(payload, attributes, providerMetadata)
+	if err != nil {
+		loggingFields := LoggingFields{"message_body": payload}
+		c.settings.GetLogger(ctx).Error(err, "invalid message, unable to unmarshal", loggingFields)
+		return
+	}
+
+	callbackKey := CallbackKey{message.Type, int(message.DataSchemaVersion.Major())}
+	var callback CallbackFunction
+	var ok bool
+	if callback, ok = (*c.settings.CallbackRegistry)[callbackKey]; !ok {
+		loggingFields := LoggingFields{"message_body": payload}
+		c.settings.GetLogger(ctx).Error(err, "no callback defined for message", loggingFields)
+		return
+	}
+
+	err = callback(ctx, message)
+	switch err {
+	case nil:
+		err := c.backend.AckMessage(ctx, providerMetadata)
+		if err != nil {
+			c.settings.GetLogger(ctx).Error(err, "Failed to ack message", LoggingFields{"message_id": message.ID})
+		}
+		return
+	case ErrRetry:
+		c.settings.GetLogger(ctx).Debug("Retrying due to exception", LoggingFields{"message_id": message.ID})
+	default:
+		c.settings.GetLogger(ctx).Error(err, "Retrying due to unknown exception", LoggingFields{"message_id": message.ID})
+	}
+	err = c.backend.NackMessage(ctx, providerMetadata)
+	if err != nil {
+		c.settings.GetLogger(ctx).Error(err, "Failed to nack message", LoggingFields{"message_id": message.ID})
+	}
+}
+
+// ListenForMessages starts a hedwig listener for the provided message types
+func (c *queueConsumer) ListenForMessages(ctx context.Context, request ListenRequest) error {
+	if request.NumMessages == 0 {
+		request.NumMessages = 1
+	}
+
+	if err := c.backend.Receive(ctx, request.NumMessages, request.VisibilityTimeoutS, c.processMessage); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func NewQueueConsumer(settings *Settings, backend IBackend, validator IMessageValidator) IQueueConsumer {
+	settings.initDefaults()
+
+	return &queueConsumer{
+		consumer: consumer{
+			backend:   backend,
+			settings:  settings,
+			validator: validator,
+		},
+	}
 }

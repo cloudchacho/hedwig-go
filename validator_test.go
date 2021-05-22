@@ -8,170 +8,303 @@
 package hedwig
 
 import (
-	"strings"
+	"errors"
 	"testing"
 
-	"github.com/santhosh-tekuri/jsonschema"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Masterminds/semver"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/suite"
 )
 
-func newTestCompiledSchema(inputSchema string) (*jsonschema.Schema, error) {
-	addJSONSchemaCustomFormats()
-	url := "schema.json"
-	compiler := jsonschema.NewCompiler()
-	compiler.Draft = jsonschema.Draft4
-	if err := compiler.AddResource(url, strings.NewReader(inputSchema)); err != nil {
-		return nil, err
-	}
-	schema, err := compiler.Compile(url)
-	return schema, err
+type FakeValidator struct {
+	mock.Mock
 }
 
-func TestJSONSchemaFormatHumanUUIDValid(t *testing.T) {
-	testSchema := `{"type": "string", "format": "human-uuid"}`
-	schema, err := newTestCompiledSchema(testSchema)
-	require.NoError(t, err)
-
-	cases := []*strings.Reader{
-		strings.NewReader(`"6cac5588-24cc-4b4f-bbf9-7dc0ce93f96e"`),
-		strings.NewReader(`"eb0a0a70-3c37-4898-a73f-1b120c0eaf03"`),
-	}
-
-	for _, c := range cases {
-		err = schema.Validate(c)
-		assert.Nil(t, err)
-	}
+func (f *FakeValidator) Serialize(message *Message) ([]byte, map[string]string, error) {
+	args := f.Called(message)
+	return args.Get(0).([]byte), args.Get(1).(map[string]string), args.Error(2)
 }
 
-func TestJSONSchemaFormatHumanUUIDInvalid(t *testing.T) {
-	testSchema := `{"type": "string", "format": "human-uuid"}`
-	schema, err := newTestCompiledSchema(testSchema)
-	require.NoError(t, err)
-
-	cases := []*strings.Reader{
-		strings.NewReader(`"abcd"`),
-		strings.NewReader(`"yyyyyyyy-tttt-416a-92ed-420e62b33eb5"`),
-	}
-
-	for _, c := range cases {
-		err = schema.Validate(c)
-		assert.NotNil(t, err)
-	}
+func (f *FakeValidator) Deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}) (*Message, error) {
+	args := f.Called(messagePayload, attributes, providerMetadata)
+	return args.Get(0).(*Message), args.Error(1)
 }
 
-func TestSchemaKeyFromSchemaValid(t *testing.T) {
-	schema := "hedwig.automatic.com/schema#/schemas/vehicle_created/1.0"
-	schemaKey, err := schemaKeyFromSchema(schema)
-	require.NoError(t, err)
-
-	expectedSchemaKey := "vehicle_created/1.*"
-	assert.Equal(t, expectedSchemaKey, schemaKey)
+type FakeEncoder struct {
+	mock.Mock
 }
 
-func TestSchemaKeyFromSchemaInvalidSchema(t *testing.T) {
-	assertions := assert.New(t)
-
-	schema := "hedwig.automatic.com/schema#/schemas/vehicle_created/1.a"
-	schemaKey, err := schemaKeyFromSchema(schema)
-	assertions.NotNil(err)
-	assertions.Empty(schemaKey)
+func (f *FakeEncoder) EncodePayload(data interface{}, useMessageTransport bool, metaAttrs MetaAttributes) ([]byte, map[string]string, error) {
+	args := f.Called(data, useMessageTransport, metaAttrs)
+	return args.Get(0).([]byte), args.Get(1).(map[string]string), args.Error(2)
 }
 
-func TestValidateValid(t *testing.T) {
-	settings := createTestSettings()
-	validator := settings.Validator
-	msgDataType := "vehicle_created"
-	msgDataSchemaVersion := "1.0"
-	data := FakeHedwigDataField{
-		VehicleID: "C_1234567890123456",
+func (f *FakeEncoder) VerifyKnownMinorVersion(messageType string, version *semver.Version) error {
+	args := f.Called(messageType, version)
+	return args.Error(0)
+}
+
+func (f *FakeEncoder) EncodeMessageType(messageType string, version *semver.Version) (string, error) {
+	args := f.Called(messageType, version)
+	return args.String(0), args.Error(1)
+}
+
+func (f *FakeEncoder) DecodeMessageType(schema string) (string, *semver.Version, error) {
+	args := f.Called(schema)
+	return args.String(0), args.Get(1).(*semver.Version), args.Error(2)
+}
+
+func (f *FakeEncoder) ExtractData(messagePayload []byte, attributes map[string]string, useMessageTransport bool) (MetaAttributes, interface{}, error) {
+	args := f.Called(messagePayload, attributes, useMessageTransport)
+	return args.Get(0).(MetaAttributes), args.Get(1), args.Error(2)
+}
+
+func (f FakeEncoder) DecodeData(metaAttrs MetaAttributes, messageType string, version *semver.Version, data interface{}) (interface{}, error) {
+	args := f.Called(metaAttrs, messageType, version, data)
+	return args.Get(0), args.Error(1)
+}
+
+func (s *ValidatorTestSuite) TestSerialize() {
+	message, err := NewMessage(s.settings, "user-created", "1.0", nil, FakeHedwigDataField{VehicleID: "C_123"})
+	require.NoError(s.T(), err)
+
+	s.encoder.On("VerifyKnownMinorVersion", message.Type, message.DataSchemaVersion).Return(nil)
+	schema := "user-created/1.0"
+	s.encoder.On("EncodeMessageType", message.Type, message.DataSchemaVersion).Return(schema, nil)
+
+	metaAttrs := MetaAttributes{
+		message.Metadata.Timestamp,
+		message.Metadata.Publisher,
+		message.Metadata.Headers,
+		message.ID,
+		schema,
+		semver.MustParse("1.0"),
 	}
-	message, err := NewMessage(settings, msgDataType, msgDataSchemaVersion, map[string]string{}, &data)
-	require.NoError(t, err)
 
-	err = validator.Validate(message)
-	assert.Nil(t, err)
+	payload := []byte("user-created/1.0 C_123")
+	attributes := map[string]string{"hedwig_id": "123"}
+	data := map[string]string{"vehicle_id": "C_123"}
+
+	s.encoder.On("EncodePayload", message.Data, *s.settings.UseTransportMessageAttributes, metaAttrs).Return(payload, attributes, nil)
+
+	s.encoder.On("ExtractData", payload, attributes, *s.settings.UseTransportMessageAttributes).Return(metaAttrs, data, nil)
+	s.encoder.On("DecodeMessageType", schema).Return(message.Type, message.DataSchemaVersion, nil)
+	s.encoder.On("DecodeData", metaAttrs, message.Type, message.DataSchemaVersion, data).Return(message.Data, nil)
+
+	returnedPayload, returnedAttributes, err := s.validator.Serialize(message)
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), returnedPayload, payload)
+	assert.Equal(s.T(), returnedAttributes, attributes)
+
+	s.encoder.AssertExpectations(s.T())
 }
 
-func TestInvalidateInvalidMinorVersion(t *testing.T) {
-	settings := createTestSettings()
-	validator := settings.Validator
-	msgDataType := "vehicle_created"
-	msgDataSchemaVersion := "1.9"
-	data := FakeHedwigDataField{
-		VehicleID: "C_1234567890123456",
-	}
-	message, err := NewMessage(settings, msgDataType, msgDataSchemaVersion, map[string]string{}, &data)
-	require.NoError(t, err)
+func (s *ValidatorTestSuite) TestSerializeUnknownMinor() {
+	message, err := NewMessage(s.settings, "user-created", "1.0", nil, FakeHedwigDataField{VehicleID: "C_123"})
+	require.NoError(s.T(), err)
 
-	err = validator.Validate(message)
-	assert.NotNil(t, err)
+	s.encoder.On("VerifyKnownMinorVersion", message.Type, message.DataSchemaVersion).Return(errors.New("unknown minor version"))
+
+	_, _, err = s.validator.Serialize(message)
+	assert.Error(s.T(), err, "unknown minor version")
+
+	s.encoder.AssertExpectations(s.T())
 }
 
-func TestInvalidNoXVersions(t *testing.T) {
-	assertions := assert.New(t)
-	schemaMissingXversions := `
-	{
-		"id": "https://hedwig.automatic.com/schema",
-		"$schema": "http://json-schema.org/draft-04/schema#",
-		"description": "Test Schema for Hedwig messages",
-		"schemas": {
-			"trip_created": {
-				"1": {
-					"description": "This is a message type",
-					"type": "object",
-					"required": [
-						"vehicle_id",
-						"user_id"
-					],
-					"properties": {
-						"vehicle_id": {
-							"type": "string"
-						},
-						"user_id": {
-							"type": "string"
-						},
-						"vin": {
-							"type": "string"
-						}
-					}
-				}
-			}
-		}
+func (s *ValidatorTestSuite) TestSerializeEncodeFailed() {
+	message, err := NewMessage(s.settings, "user-created", "1.0", nil, FakeHedwigDataField{VehicleID: "C_123"})
+	require.NoError(s.T(), err)
+
+	s.encoder.On("VerifyKnownMinorVersion", message.Type, message.DataSchemaVersion).Return(nil)
+	schema := "user-created/1.0"
+	s.encoder.On("EncodeMessageType", message.Type, message.DataSchemaVersion).Return(schema, nil)
+
+	metaAttrs := MetaAttributes{
+		message.Metadata.Timestamp,
+		message.Metadata.Publisher,
+		message.Metadata.Headers,
+		message.ID,
+		schema,
+		semver.MustParse("1.0"),
 	}
-	`
-	v, err := NewMessageValidatorFromBytes([]byte(schemaMissingXversions))
-	assertions.Nil(v)
-	assertions.NotNil(err)
-	assertions.Equal("x-versions not defined for message for schemaURL: https://hedwig.automatic.com/schema/schemas/trip_created/1", err.Error())
+
+	s.encoder.On("EncodePayload", message.Data, *s.settings.UseTransportMessageAttributes, metaAttrs).
+		Return([]byte(""), map[string]string{}, errors.New("can't serialize data"))
+
+	_, _, err = s.validator.Serialize(message)
+	assert.Error(s.T(), err, "can't serialize data")
+
+	s.encoder.AssertExpectations(s.T())
 }
 
-func TestValidateInvalidSchema(t *testing.T) {
-	settings := createTestSettings()
-	validator := settings.Validator
-	msgDataType := "vehicle_created"
-	msgDataSchemaVersion := "100.0"
-	data := FakeHedwigDataField{
-		VehicleID: "C_1234567890123456",
-	}
-	message, err := NewMessage(settings, msgDataType, msgDataSchemaVersion, map[string]string{}, &data)
-	require.NoError(t, err)
+func (s *ValidatorTestSuite) TestSerializeValidationFailure() {
+	message, err := NewMessage(s.settings, "user-created", "1.0", nil, FakeHedwigDataField{VehicleID: "C_123"})
+	require.NoError(s.T(), err)
 
-	err = validator.Validate(message)
-	assert.NotNil(t, err)
+	s.encoder.On("VerifyKnownMinorVersion", message.Type, message.DataSchemaVersion).Return(nil)
+	schema := "user-created/1.0"
+	s.encoder.On("EncodeMessageType", message.Type, message.DataSchemaVersion).Return(schema, nil)
+
+	metaAttrs := MetaAttributes{
+		message.Metadata.Timestamp,
+		message.Metadata.Publisher,
+		message.Metadata.Headers,
+		message.ID,
+		schema,
+		semver.MustParse("1.0"),
+	}
+
+	payload := []byte("user-created/1.0 C_123")
+	attributes := map[string]string{"hedwig_id": "123"}
+
+	s.encoder.On("EncodePayload", message.Data, *s.settings.UseTransportMessageAttributes, metaAttrs).Return(payload, attributes, nil)
+
+	s.encoder.On("ExtractData", payload, attributes, *s.settings.UseTransportMessageAttributes).
+		Return(MetaAttributes{}, nil, errors.New("invalid payload"))
+
+	_, _, err = s.validator.Serialize(message)
+	assert.Error(s.T(), err, "invalid payload")
+
+	s.encoder.AssertExpectations(s.T())
 }
 
-func TestValidateInvalidData(t *testing.T) {
-	settings := createTestSettings()
-	validator := settings.Validator
-	msgDataType := "vehicle_created"
-	msgDataSchemaVersion := "100.0"
-	data := FakeHedwigDataField{
-		VehicleID: "123",
-	}
-	message, err := NewMessage(settings, msgDataType, msgDataSchemaVersion, map[string]string{}, &data)
-	require.NoError(t, err)
+func (s *ValidatorTestSuite) TestDeserialize() {
+	message, err := NewMessage(s.settings, "user-created", "1.0", nil, FakeHedwigDataField{VehicleID: "C_123"})
+	require.NoError(s.T(), err)
 
-	err = validator.Validate(message)
-	assert.NotNil(t, err)
+	schema := "user-created/1.0"
+
+	metaAttrs := MetaAttributes{
+		message.Metadata.Timestamp,
+		message.Metadata.Publisher,
+		message.Metadata.Headers,
+		message.ID,
+		schema,
+		semver.MustParse("1.0"),
+	}
+
+	payload := []byte("user-created/1.0 C_123")
+	attributes := map[string]string{"hedwig_id": "123"}
+	data := map[string]string{"vehicle_id": "C_123"}
+
+	s.encoder.On("ExtractData", payload, attributes, *s.settings.UseTransportMessageAttributes).Return(metaAttrs, data, nil)
+	s.encoder.On("DecodeMessageType", schema).Return(message.Type, message.DataSchemaVersion, nil)
+	s.encoder.On("DecodeData", metaAttrs, message.Type, message.DataSchemaVersion, data).Return(message.Data, nil)
+
+	returnedMessage, err := s.validator.Deserialize(payload, attributes, nil)
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), returnedMessage, message)
+
+	s.encoder.AssertExpectations(s.T())
+}
+
+func (s *ValidatorTestSuite) TestDeserializeExtractionFailure() {
+	payload := []byte("user-created/1.0 C_123")
+	attributes := map[string]string{"hedwig_id": "123"}
+
+	s.encoder.On("ExtractData", payload, attributes, *s.settings.UseTransportMessageAttributes).
+		Return(MetaAttributes{}, nil, errors.New("invalid payload"))
+
+	_, err := s.validator.Deserialize(payload, attributes, nil)
+	assert.Error(s.T(), err, "invalid payload")
+
+	s.encoder.AssertExpectations(s.T())
+}
+
+func (s *ValidatorTestSuite) TestDeserializeUnknownMessageType() {
+	message, err := NewMessage(s.settings, "user-created", "1.0", nil, FakeHedwigDataField{VehicleID: "C_123"})
+	require.NoError(s.T(), err)
+
+	schema := "user-created/1.0"
+
+	metaAttrs := MetaAttributes{
+		message.Metadata.Timestamp,
+		message.Metadata.Publisher,
+		message.Metadata.Headers,
+		message.ID,
+		schema,
+		semver.MustParse("1.0"),
+	}
+
+	payload := []byte("user-created/1.0 C_123")
+	attributes := map[string]string{"hedwig_id": "123"}
+	data := map[string]string{"vehicle_id": "C_123"}
+
+	s.encoder.On("ExtractData", payload, attributes, *s.settings.UseTransportMessageAttributes).Return(metaAttrs, data, nil)
+	s.encoder.On("DecodeMessageType", schema).Return(message.Type, message.DataSchemaVersion, errors.New("invalid message type"))
+
+	_, err = s.validator.Deserialize(payload, attributes, nil)
+	assert.Error(s.T(), err, "invalid message type")
+
+	s.encoder.AssertExpectations(s.T())
+}
+
+func (s *ValidatorTestSuite) TestDeserializeInvalidData() {
+	message, err := NewMessage(s.settings, "user-created", "1.0", nil, FakeHedwigDataField{VehicleID: "C_123"})
+	require.NoError(s.T(), err)
+
+	schema := "user-created/1.0"
+
+	metaAttrs := MetaAttributes{
+		message.Metadata.Timestamp,
+		message.Metadata.Publisher,
+		message.Metadata.Headers,
+		message.ID,
+		schema,
+		semver.MustParse("1.0"),
+	}
+
+	payload := []byte("user-created/1.0 C_123")
+	attributes := map[string]string{"hedwig_id": "123"}
+	data := map[string]string{"vehicle_id": "C_123"}
+
+	s.encoder.On("ExtractData", payload, attributes, *s.settings.UseTransportMessageAttributes).Return(metaAttrs, data, nil)
+	s.encoder.On("DecodeMessageType", schema).Return(message.Type, message.DataSchemaVersion, nil)
+	s.encoder.On("DecodeData", metaAttrs, message.Type, message.DataSchemaVersion, data).Return(message.Data, errors.New("invalid data"))
+
+	_, err = s.validator.Deserialize(payload, attributes, nil)
+	assert.Error(s.T(), err, "invalid data")
+
+	s.encoder.AssertExpectations(s.T())
+}
+
+func (s *ValidatorTestSuite) TestNew() {
+	assert.NotNil(s.T(), s.validator)
+}
+
+type ValidatorTestSuite struct {
+	suite.Suite
+	validator IMessageValidator
+	backend   *FakeBackend
+	callback  *fakeCallback
+	settings  *Settings
+	encoder   *FakeEncoder
+}
+
+func (s *ValidatorTestSuite) SetupTest() {
+	settings := &Settings{
+		AWSRegion:    "us-east-1",
+		AWSAccountID: "1234567890",
+		QueueName:    "dev-myapp",
+		MessageRouting: map[MessageRouteKey]string{
+			{
+				MessageType:         "user-created",
+				MessageMajorVersion: 1,
+			}: "dev-user-created-v1",
+		},
+	}
+	backend := &FakeBackend{}
+	encoder := &FakeEncoder{}
+
+	s.validator = NewMessageValidator(settings, encoder)
+	s.encoder = encoder
+	s.backend = backend
+	s.settings = settings
+}
+
+func TestValidatorTestSuite(t *testing.T) {
+	suite.Run(t, &ValidatorTestSuite{})
 }
