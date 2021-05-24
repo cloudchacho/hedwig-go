@@ -18,7 +18,7 @@ type MessageRouteKey struct {
 }
 
 // GetLoggerFunc returns the logger object
-type GetLoggerFunc func(ctx context.Context) Logger
+type GetLoggerFunc func(ctx context.Context) ILogger
 
 // Settings for Hedwig
 type Settings struct {
@@ -86,7 +86,7 @@ func (s *Settings) initDefaults() {
 	}
 	if s.GetLogger == nil {
 		stdLogger := &stdLogger{}
-		s.GetLogger = func(_ context.Context) Logger { return stdLogger }
+		s.GetLogger = func(_ context.Context) ILogger { return stdLogger }
 	}
 	if s.UseTransportMessageAttributes == nil {
 		useTransportMessageAttributes := true

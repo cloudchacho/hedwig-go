@@ -3,12 +3,10 @@ package aws
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/require"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/request"
@@ -16,15 +14,53 @@ import (
 	"github.com/aws/aws-sdk-go/service/sns/snsiface"
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/aws/aws-sdk-go/service/sqs/sqsiface"
-	"github.com/cloudchacho/hedwig-go"
-
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/cloudchacho/hedwig-go"
 )
 
 type fakeHedwigDataField struct {
 	VehicleID string `json:"vehicle_id"`
+}
+
+type fakeLog struct {
+	level   string
+	err     error
+	message string
+	fields  hedwig.LoggingFields
+}
+
+type fakeLogger struct {
+	lock sync.Mutex
+	logs []fakeLog
+}
+
+func (f *fakeLogger) Error(err error, message string, fields hedwig.LoggingFields) {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.logs = append(f.logs, fakeLog{"error", err, message, fields})
+}
+
+func (f *fakeLogger) Warn(err error, message string, fields hedwig.LoggingFields) {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.logs = append(f.logs, fakeLog{"warn", err, message, fields})
+}
+
+func (f *fakeLogger) Info(message string, fields hedwig.LoggingFields) {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.logs = append(f.logs, fakeLog{"info", nil, message, fields})
+}
+
+func (f *fakeLogger) Debug(message string, fields hedwig.LoggingFields) {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.logs = append(f.logs, fakeLog{"debug", nil, message, fields})
 }
 
 type fakeValidator struct {
@@ -195,6 +231,73 @@ func (s *BackendTestSuite) TestReceive() {
 	s.fakeConsumerCallback.AssertExpectations(s.T())
 }
 
+func (s *BackendTestSuite) TestReceiveFailedNonUTF8Decoding() {
+	ctx, cancel := context.WithCancel(context.Background())
+	numMessages := uint32(10)
+	visibilityTimeoutS := uint32(10)
+	queueName := "HEDWIG-DEV-MYAPP"
+	queueURL := "https://sqs.us-east-1.amazonaws.com/686176732873/" + queueName
+	queueInput := &sqs.GetQueueUrlInput{
+		QueueName: &queueName,
+	}
+	output := &sqs.GetQueueUrlOutput{
+		QueueUrl: &queueURL,
+	}
+	s.fakeSQS.On("GetQueueUrlWithContext", ctx, queueInput, mock.Anything).Return(output, nil)
+
+	receiptHandle := "foobar"
+	receiveInput := &sqs.ReceiveMessageInput{
+		QueueUrl:              aws.String(queueURL),
+		AttributeNames:        []*string{aws.String(sqs.QueueAttributeNameAll)},
+		MessageAttributeNames: []*string{aws.String(sqs.QueueAttributeNameAll)},
+		VisibilityTimeout:     aws.Int64(int64(visibilityTimeoutS)),
+		MaxNumberOfMessages:   aws.Int64(int64(numMessages)),
+		WaitTimeSeconds:       aws.Int64(sqsWaitTimeoutSeconds),
+	}
+	receiveCount := 1
+	body := `foobar`
+	messageId := "123"
+	sqsMessage := sqs.Message{
+		ReceiptHandle: aws.String(receiptHandle),
+		MessageAttributes: map[string]*sqs.MessageAttributeValue{
+			"foo":             &sqs.MessageAttributeValue{StringValue: aws.String("bar")},
+			"hedwig_encoding": &sqs.MessageAttributeValue{StringValue: aws.String("base64")},
+		},
+		Attributes: map[string]*string{
+			sqs.MessageSystemAttributeNameApproximateFirstReceiveTimestamp: aws.String("1295500510456"),
+			sqs.MessageSystemAttributeNameSentTimestamp:                    aws.String("1295500510123"),
+			sqs.MessageSystemAttributeNameApproximateReceiveCount:          aws.String(strconv.Itoa(int(receiveCount))),
+		},
+		Body:      aws.String(body),
+		MessageId: aws.String(messageId),
+	}
+	receiveOutput := &sqs.ReceiveMessageOutput{Messages: []*sqs.Message{&sqsMessage}}
+	s.fakeSQS.On("ReceiveMessageWithContext", ctx, receiveInput, []request.Option(nil)).
+		Return(receiveOutput, nil).
+		Once()
+	s.fakeSQS.On("ReceiveMessageWithContext", ctx, receiveInput, []request.Option(nil)).
+		Return(&sqs.ReceiveMessageOutput{}, nil)
+
+	ch := make(chan bool)
+	go func() {
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeoutS, s.fakeConsumerCallback.Callback)
+		s.EqualError(err, "context canceled")
+		ch <- true
+		close(ch)
+	}()
+	time.Sleep(time.Millisecond * 10)
+	cancel()
+
+	// wait for co-routine to finish
+	<-ch
+
+	s.fakeSQS.AssertExpectations(s.T())
+	s.fakeConsumerCallback.AssertExpectations(s.T())
+	s.Equal(len(s.logger.logs), 1)
+	s.Equal(s.logger.logs[0].message, "Invalid message payload - couldn't decode using base64")
+	s.Error(s.logger.logs[0].err)
+}
+
 func (s *BackendTestSuite) TestReceiveNoMessages() {
 	ctx, cancel := context.WithCancel(context.Background())
 	numMessages := uint32(10)
@@ -229,6 +332,93 @@ func (s *BackendTestSuite) TestReceiveNoMessages() {
 	}()
 	time.Sleep(time.Millisecond * 1)
 	cancel()
+
+	// wait for co-routine to finish
+	<-ch
+
+	s.fakeSQS.AssertExpectations(s.T())
+	s.fakeConsumerCallback.AssertExpectations(s.T())
+}
+
+func (s *BackendTestSuite) TestReceiveError() {
+	ctx := context.Background()
+	numMessages := uint32(10)
+	visibilityTimeoutS := uint32(10)
+	queueName := "HEDWIG-DEV-MYAPP"
+	queueURL := "https://sqs.us-east-1.amazonaws.com/686176732873/" + queueName
+	queueInput := &sqs.GetQueueUrlInput{
+		QueueName: &queueName,
+	}
+	output := &sqs.GetQueueUrlOutput{
+		QueueUrl: &queueURL,
+	}
+	s.fakeSQS.On("GetQueueUrlWithContext", ctx, queueInput, mock.Anything).Return(output, nil)
+
+	receiveInput := &sqs.ReceiveMessageInput{
+		QueueUrl:              aws.String(queueURL),
+		AttributeNames:        []*string{aws.String(sqs.QueueAttributeNameAll)},
+		MessageAttributeNames: []*string{aws.String(sqs.QueueAttributeNameAll)},
+		VisibilityTimeout:     aws.Int64(int64(visibilityTimeoutS)),
+		MaxNumberOfMessages:   aws.Int64(int64(numMessages)),
+		WaitTimeSeconds:       aws.Int64(sqsWaitTimeoutSeconds),
+	}
+	s.fakeSQS.On("ReceiveMessageWithContext", ctx, receiveInput, []request.Option(nil)).
+		Return(&sqs.ReceiveMessageOutput{}, errors.New("no internet"))
+
+	ch := make(chan bool)
+	go func() {
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeoutS, s.fakeConsumerCallback.Callback)
+		s.EqualError(err, "failed to receive SQS message: no internet")
+		ch <- true
+		close(ch)
+	}()
+
+	// wait for co-routine to finish
+	<-ch
+
+	s.fakeSQS.AssertExpectations(s.T())
+	s.fakeConsumerCallback.AssertExpectations(s.T())
+}
+
+func (s *BackendTestSuite) TestReceiveGetQueueError() {
+	ctx := context.Background()
+	numMessages := uint32(10)
+	visibilityTimeoutS := uint32(10)
+	queueName := "HEDWIG-DEV-MYAPP"
+	queueInput := &sqs.GetQueueUrlInput{
+		QueueName: &queueName,
+	}
+	s.fakeSQS.On("GetQueueUrlWithContext", ctx, queueInput, mock.Anything).
+		Return((*sqs.GetQueueUrlOutput)(nil), errors.New("no internet"))
+
+	err := s.backend.Receive(ctx, numMessages, visibilityTimeoutS, s.fakeConsumerCallback.Callback)
+	s.EqualError(err, "failed to get SQS Queue URL: no internet")
+
+	s.fakeSQS.AssertExpectations(s.T())
+	s.fakeConsumerCallback.AssertExpectations(s.T())
+}
+
+func (s *BackendTestSuite) TestReceiveShutdown() {
+	ctx, _ := context.WithDeadline(context.Background(), time.Now().Add(time.Second*1))
+	numMessages := uint32(10)
+	visibilityTimeoutS := uint32(10)
+	queueName := "HEDWIG-DEV-MYAPP"
+	queueURL := "https://sqs.us-east-1.amazonaws.com/686176732873/" + queueName
+	queueInput := &sqs.GetQueueUrlInput{
+		QueueName: &queueName,
+	}
+	output := &sqs.GetQueueUrlOutput{
+		QueueUrl: &queueURL,
+	}
+	s.fakeSQS.On("GetQueueUrlWithContext", ctx, queueInput, mock.Anything).Return(output, nil)
+
+	ch := make(chan bool)
+	go func() {
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeoutS, s.fakeConsumerCallback.Callback)
+		s.EqualError(err, "context shutting down")
+		ch <- true
+		close(ch)
+	}()
 
 	// wait for co-routine to finish
 	<-ch
@@ -472,6 +662,24 @@ func (s *BackendTestSuite) TestAckError() {
 	s.fakeSQS.AssertExpectations(s.T())
 }
 
+func (s *BackendTestSuite) TestAckGetQueueError() {
+	ctx := context.Background()
+
+	queueName := "HEDWIG-DEV-MYAPP"
+	queueInput := &sqs.GetQueueUrlInput{
+		QueueName: &queueName,
+	}
+	s.fakeSQS.On("GetQueueUrlWithContext", ctx, queueInput, mock.Anything).
+		Return((*sqs.GetQueueUrlOutput)(nil), errors.New("no internet"))
+
+	receiptHandle := "foobar"
+
+	err := s.backend.AckMessage(ctx, AWSMetadata{ReceiptHandle: receiptHandle})
+	s.EqualError(err, "failed to get SQS Queue URL: no internet")
+
+	s.fakeSQS.AssertExpectations(s.T())
+}
+
 func (s *BackendTestSuite) TestNack() {
 	ctx := context.Background()
 
@@ -499,9 +707,11 @@ type BackendTestSuite struct {
 	attributes           map[string]string
 	validator            *fakeValidator
 	fakeConsumerCallback *fakeConsumerCallback
+	logger               *fakeLogger
 }
 
 func (s *BackendTestSuite) SetupTest() {
+	logger := &fakeLogger{}
 	settings := &hedwig.Settings{
 		AWSRegion:    "us-east-1",
 		AWSAccountID: "1234567890",
@@ -512,6 +722,10 @@ func (s *BackendTestSuite) SetupTest() {
 				MessageMajorVersion: 1,
 			}: "dev-user-created-v1",
 		},
+		GetLogger: func(ctx context.Context) hedwig.ILogger {
+			return logger
+		},
+		ShutdownTimeout: time.Second * 10,
 	}
 	fakeSQS := &FakeSQS{}
 	fakeSNS := &FakeSNS{}
@@ -535,6 +749,7 @@ func (s *BackendTestSuite) SetupTest() {
 	s.payload = payload
 	s.attributes = attributes
 	s.fakeConsumerCallback = fakeMessageCallback
+	s.logger = logger
 }
 
 func TestBackendTestSuite(t *testing.T) {

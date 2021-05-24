@@ -8,15 +8,16 @@ import (
 	"context"
 	"testing"
 
-	"github.com/stretchr/testify/suite"
+	"github.com/pkg/errors"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 )
 
 func (s *PublisherTestSuite) TestPublish() {
 	ctx := context.Background()
 
-	data := FakeHedwigDataField{
+	data := fakeHedwigDataField{
 		VehicleID: "C_1234567890123456",
 	}
 	message, err := NewMessage(s.settings, "user-created", "1.0", nil, &data)
@@ -43,7 +44,7 @@ func (s *PublisherTestSuite) TestPublish() {
 func (s *PublisherTestSuite) TestPublishTopicError() {
 	ctx := context.Background()
 
-	data := FakeHedwigDataField{
+	data := fakeHedwigDataField{
 		VehicleID: "C_1234567890123456",
 	}
 	message, err := NewMessage(s.settings, "user-created", "2.0", nil, &data)
@@ -61,6 +62,24 @@ func (s *PublisherTestSuite) TestPublishTopicError() {
 	s.backend.AssertExpectations(s.T())
 }
 
+func (s *PublisherTestSuite) TestPublishSerializeError() {
+	ctx := context.Background()
+
+	data := fakeHedwigDataField{
+		VehicleID: "C_1234567890123456",
+	}
+	message, err := NewMessage(s.settings, "user-created", "2.0", nil, &data)
+	s.Require().NoError(err)
+
+	s.validator.On("Serialize", message).
+		Return([]byte(""), map[string]string{}, errors.New("failed to serialize"))
+
+	_, err = s.publisher.Publish(ctx, message)
+	s.EqualError(err, "failed to serialize")
+
+	s.backend.AssertExpectations(s.T())
+}
+
 func (s *PublisherTestSuite) TestNew() {
 	assert.NotNil(s.T(), s.publisher)
 }
@@ -69,7 +88,7 @@ type PublisherTestSuite struct {
 	suite.Suite
 	publisher *Publisher
 	backend   *FakeBackend
-	validator *FakeValidator
+	validator *fakeValidator
 	callback  *fakeCallback
 	settings  *Settings
 }
@@ -87,7 +106,7 @@ func (s *PublisherTestSuite) SetupTest() {
 		},
 	}
 	backend := &FakeBackend{}
-	validator := &FakeValidator{}
+	validator := &fakeValidator{}
 
 	s.publisher = NewPublisher(settings, backend, validator).(*Publisher)
 	s.backend = backend

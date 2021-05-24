@@ -41,24 +41,18 @@ func (m *Message) Publish(ctx context.Context, publisher IPublisher) (string, er
 	return publisher.Publish(ctx, m)
 }
 
-func (m *Message) serialize(validator IMessageValidator) ([]byte, map[string]string, error) {
+// Serialize the message for appropriate on-the-wire format
+func (m *Message) Serialize(validator IMessageValidator) ([]byte, map[string]string, error) {
 	return validator.Serialize(m)
 }
 
-func createMetadata(settings *Settings, headers map[string]string) (metadata, error) {
+func createMetadata(settings *Settings, headers map[string]string) metadata {
 	return metadata{
 		Headers:   headers,
 		Publisher: settings.PublisherName,
 		Timestamp: time.Now(),
-	}, nil
+	}
 }
-
-//
-//// execCallback executes the callback associated with message
-//func (m *Message) execCallback(ctx context.Context, receipt string) error {
-//	m.Metadata.Receipt = receipt
-//	return m.callback(ctx, m)
-//}
 
 // newMessageWithID creates new Hedwig messages
 func newMessageWithID(
@@ -93,10 +87,7 @@ func NewMessage(settings *Settings, dataType string, dataSchemaVersion string, h
 		headers = make(map[string]string)
 	}
 
-	metadata, err := createMetadata(settings, headers)
-	if err != nil {
-		return nil, err
-	}
+	metadata := createMetadata(settings, headers)
 
 	return newMessageWithID(settings, msgID, dataType, dataSchemaVersion, metadata, data)
 }

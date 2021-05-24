@@ -89,6 +89,7 @@ func xVersionsExt() jsonschema.Extension {
 				}
 				return version, err
 			}
+			// should never happen since value is validated to be a string already
 			return nil, errors.Errorf("invalid value for x-version: %s", xVersion)
 		}
 		return nil, nil
@@ -125,6 +126,7 @@ func NewEncoderFromBytes(schemaFile []byte, dataRegistry hedwig.DataFactoryRegis
 		for version, schema := range schemaVersionMap {
 			schemaByte, err := json.Marshal(schema)
 			if err != nil {
+				// should never happen, schema was already unmarshaled once
 				return nil, err
 			}
 
@@ -139,11 +141,13 @@ func NewEncoderFromBytes(schemaFile []byte, dataRegistry hedwig.DataFactoryRegis
 
 			err = compiler.AddResource(schemaURL, strings.NewReader(string(schemaByte)))
 			if err != nil {
+				// should never happen, the schema bytes were already marshaled
 				return nil, err
 			}
 
 			err = compiler.AddResource(encoder.schemaID, strings.NewReader(string(schemaFile)))
 			if err != nil {
+				// should never happen, schema was already unmarshaled once
 				return nil, err
 			}
 
@@ -270,8 +274,8 @@ func (me *messageEncoder) VerifyKnownMinorVersion(messageType string, version *s
 }
 
 // EncodeMessageType encodes the message type with appropriate format for transport over the wire
-func (me *messageEncoder) EncodeMessageType(messageType string, version *semver.Version) (string, error) {
-	return fmt.Sprintf("%s#/schemas/%s/%d.%d", me.schemaRoot(), messageType, version.Major(), version.Minor()), nil
+func (me *messageEncoder) EncodeMessageType(messageType string, version *semver.Version) string {
+	return fmt.Sprintf("%s#/schemas/%s/%d.%d", me.schemaRoot(), messageType, version.Major(), version.Minor())
 }
 
 // DecodeMessageType decodes message type from meta attributes

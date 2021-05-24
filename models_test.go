@@ -5,17 +5,29 @@
 package hedwig
 
 import (
+	"context"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/mock"
 
 	"github.com/Masterminds/semver"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// FakeHedwigDataField is a fake data field for testing
-type FakeHedwigDataField struct {
+// fakeHedwigDataField is a fake data field for testing
+type fakeHedwigDataField struct {
 	VehicleID string `json:"vehicle_id"`
+}
+
+type fakePublisher struct {
+	mock.Mock
+}
+
+func (f *fakePublisher) Publish(ctx context.Context, message *Message) (string, error) {
+	args := f.Called(ctx, message)
+	return args.String(0), args.Error(1)
 }
 
 func createTestSettings() *Settings {
@@ -36,9 +48,8 @@ func TestCreateMetadata(t *testing.T) {
 	headers := map[string]string{"X-Request-Id": "abc123"}
 	settings := createTestSettings()
 
-	metadata, err := createMetadata(settings, headers)
+	metadata := createMetadata(settings, headers)
 	assertions.NotNil(metadata)
-	require.NoError(t, err)
 
 	assertions.Equal(headers, metadata.Headers)
 	assertions.Equal(settings.PublisherName, metadata.Publisher)
@@ -51,19 +62,18 @@ func TestNewMessageWithIDSuccess(t *testing.T) {
 
 	headers := map[string]string{"X-Request-Id": "abc123"}
 	settings := createTestSettings()
-	metadata, err := createMetadata(settings, headers)
+	metadata := createMetadata(settings, headers)
 	assertions.NotNil(metadata)
-	require.NoError(t, err)
 
 	id := "abcdefgh"
 	msgDataType := "vehicle_created"
 	msgDataSchemaVersion := "1.0"
-	data := FakeHedwigDataField{}
+	data := fakeHedwigDataField{}
 
 	m, err := newMessageWithID(settings, id, msgDataType, msgDataSchemaVersion, metadata, &data)
 	require.NoError(t, err)
 
-	assertions.Equal(data, *m.Data.(*FakeHedwigDataField))
+	assertions.Equal(data, *m.Data.(*fakeHedwigDataField))
 	assertions.Equal(headers, metadata.Headers)
 	assertions.Equal(id, m.ID)
 	assertions.Equal(msgDataType, m.Type)
@@ -77,15 +87,14 @@ func TestNewMessageWithIDEmptySchemaVersion(t *testing.T) {
 
 	headers := map[string]string{"X-Request-Id": "abc123"}
 	settings := createTestSettings()
-	metadata, err := createMetadata(settings, headers)
+	metadata := createMetadata(settings, headers)
 	assertions.NotNil(metadata)
-	require.NoError(t, err)
 
 	id := "abcdefgh"
 	msgDataType := "vehicle_created"
 	msgDataSchemaVersion := ""
 
-	_, err = newMessageWithID(settings, id, msgDataType, msgDataSchemaVersion, metadata, &FakeHedwigDataField{})
+	_, err := newMessageWithID(settings, id, msgDataType, msgDataSchemaVersion, metadata, &fakeHedwigDataField{})
 	assertions.NotNil(err)
 }
 
@@ -94,15 +103,14 @@ func TestNewMessageWithIDInvalidSchemaVersion(t *testing.T) {
 
 	headers := map[string]string{"X-Request-Id": "abc123"}
 	settings := createTestSettings()
-	metadata, err := createMetadata(settings, headers)
+	metadata := createMetadata(settings, headers)
 	assertions.NotNil(metadata)
-	require.NoError(t, err)
 
 	id := "abcdefgh"
 	msgDataType := "vehicle_created"
 	msgDataSchemaVersion := "a.b"
 
-	_, err = newMessageWithID(settings, id, msgDataType, msgDataSchemaVersion, metadata, &FakeHedwigDataField{})
+	_, err := newMessageWithID(settings, id, msgDataType, msgDataSchemaVersion, metadata, &fakeHedwigDataField{})
 	assertions.NotNil(err)
 }
 
@@ -111,16 +119,61 @@ func TestNewMessageWithIDNilData(t *testing.T) {
 
 	headers := map[string]string{"X-Request-Id": "abc123"}
 	settings := createTestSettings()
-	metadata, err := createMetadata(settings, headers)
+	metadata := createMetadata(settings, headers)
 	assertions.NotNil(metadata)
-	require.NoError(t, err)
 
 	id := "abcdefgh"
 	msgDataType := "vehicle_created"
 	msgDataSchemaVersion := "1.0"
 
-	_, err = newMessageWithID(settings, id, msgDataType, msgDataSchemaVersion, metadata, nil)
+	_, err := newMessageWithID(settings, id, msgDataType, msgDataSchemaVersion, metadata, nil)
 	assertions.NotNil(err)
+}
+
+func TestMessageSerialize(t *testing.T) {
+	settings := createTestSettings()
+	msgDataType := "vehicle_created"
+	msgDataSchemaVersion := "1.0"
+	data := fakeHedwigDataField{}
+	m, err := NewMessage(settings, msgDataType, msgDataSchemaVersion, nil, &data)
+	require.NoError(t, err)
+
+	validator := &fakeValidator{}
+	payload := []byte(`{"type": "user-created"}`)
+	headers := map[string]string{}
+
+	validator.On("Serialize", m).
+		Return(payload, headers, nil)
+
+	returnedPayload, returnedHeaders, err := m.Serialize(validator)
+	assert.NoError(t, err)
+	assert.Equal(t, payload, returnedPayload)
+	assert.Equal(t, headers, returnedHeaders)
+
+	validator.AssertExpectations(t)
+}
+
+func TestMessagePublish(t *testing.T) {
+	ctx := context.Background()
+
+	settings := createTestSettings()
+	msgDataType := "vehicle_created"
+	msgDataSchemaVersion := "1.0"
+	data := fakeHedwigDataField{}
+	m, err := NewMessage(settings, msgDataType, msgDataSchemaVersion, nil, &data)
+	require.NoError(t, err)
+
+	publisher := &fakePublisher{}
+	messageId := "123"
+
+	publisher.On("Publish", ctx, m).
+		Return(messageId, nil)
+
+	returnedMessageId, err := m.Publish(ctx, publisher)
+	assert.NoError(t, err)
+	assert.Equal(t, messageId, returnedMessageId)
+
+	publisher.AssertExpectations(t)
 }
 
 func TestNewMessage(t *testing.T) {
@@ -130,12 +183,12 @@ func TestNewMessage(t *testing.T) {
 	settings := createTestSettings()
 	msgDataType := "vehicle_created"
 	msgDataSchemaVersion := "1.0"
-	data := FakeHedwigDataField{}
+	data := fakeHedwigDataField{}
 
 	m, err := NewMessage(settings, msgDataType, msgDataSchemaVersion, headers, &data)
 	require.NoError(t, err)
 
-	assertions.Equal(data, *m.Data.(*FakeHedwigDataField))
+	assertions.Equal(data, *m.Data.(*fakeHedwigDataField))
 	assertions.True(len(m.ID) > 0 && len(m.ID) < 40)
 	assertions.Equal(headers, m.Metadata.Headers)
 	ver, err := semver.NewVersion(msgDataSchemaVersion)

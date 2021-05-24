@@ -6,17 +6,15 @@ package hedwig
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/Masterminds/semver"
-
-	"github.com/stretchr/testify/suite"
-
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/suite"
 )
 
 type fakeLog struct {
@@ -101,6 +99,7 @@ func (s *ConsumerTestSuite) TestProcessMessage() {
 	s.backend.On("AckMessage", ctx, providerMetadata).
 		Return(nil)
 	s.consumer.processMessage(ctx, payload, attributes, providerMetadata)
+	s.backend.AssertExpectations(s.T())
 	s.validator.AssertExpectations(s.T())
 	s.callback.AssertExpectations(s.T())
 }
@@ -115,7 +114,8 @@ func (s *ConsumerTestSuite) TestProcessMessageDeserializeFailure() {
 	s.consumer.processMessage(ctx, payload, attributes, providerMetadata)
 	s.Equal(len(s.logger.logs), 1)
 	s.Equal(s.logger.logs[0].message, "invalid message, unable to unmarshal")
-	s.Error(s.logger.logs[0].err, "invalid message")
+	s.EqualError(s.logger.logs[0].err, "invalid message")
+	s.backend.AssertExpectations(s.T())
 	s.validator.AssertExpectations(s.T())
 	s.callback.AssertExpectations(s.T())
 }
@@ -135,7 +135,47 @@ func (s *ConsumerTestSuite) TestProcessMessageCallbackFailure() {
 	s.consumer.processMessage(ctx, payload, attributes, providerMetadata)
 	s.Equal(len(s.logger.logs), 1)
 	s.Equal(s.logger.logs[0].message, "Retrying due to unknown exception")
-	s.Error(s.logger.logs[0].err, "failed to process")
+	s.EqualError(s.logger.logs[0].err, "failed to process")
+	s.backend.AssertExpectations(s.T())
+	s.validator.AssertExpectations(s.T())
+	s.callback.AssertExpectations(s.T())
+}
+
+func (s *ConsumerTestSuite) TestProcessMessageCallbackErrRetry() {
+	ctx := context.Background()
+	payload := []byte(`foobar`)
+	attributes := map[string]string{"request_id": "123"}
+	providerMetadata := struct{}{}
+	message := Message{Type: "user-created", DataSchemaVersion: semver.MustParse("1.0")}
+	s.validator.On("Deserialize", payload, attributes, providerMetadata).
+		Return(&message, nil)
+	s.callback.On("Callback", ctx, &message).
+		Return(ErrRetry)
+	s.backend.On("NackMessage", ctx, providerMetadata).
+		Return(nil)
+	s.consumer.processMessage(ctx, payload, attributes, providerMetadata)
+	s.Equal(len(s.logger.logs), 1)
+	s.Equal(s.logger.logs[0].message, "Retrying due to exception")
+	s.NoError(s.logger.logs[0].err)
+	s.backend.AssertExpectations(s.T())
+	s.validator.AssertExpectations(s.T())
+	s.callback.AssertExpectations(s.T())
+}
+
+func (s *ConsumerTestSuite) TestProcessMessageCallbackNotFound() {
+	ctx := context.Background()
+	payload := []byte(`foobar`)
+	attributes := map[string]string{"request_id": "123"}
+	providerMetadata := struct{}{}
+	message := Message{Type: "user-created", DataSchemaVersion: semver.MustParse("1.0")}
+	s.validator.On("Deserialize", payload, attributes, providerMetadata).
+		Return(&message, nil)
+	delete(*s.consumer.settings.CallbackRegistry, CallbackKey{"user-created", 1})
+	s.consumer.processMessage(ctx, payload, attributes, providerMetadata)
+	s.Equal(len(s.logger.logs), 1)
+	s.Equal(s.logger.logs[0].message, "no callback defined for message")
+	s.EqualError(s.logger.logs[0].err, "no callback defined for message")
+	s.backend.AssertExpectations(s.T())
 	s.validator.AssertExpectations(s.T())
 	s.callback.AssertExpectations(s.T())
 }
@@ -155,9 +195,10 @@ func (s *ConsumerTestSuite) TestProcessNackFailure() {
 	s.consumer.processMessage(ctx, payload, attributes, providerMetadata)
 	s.Equal(len(s.logger.logs), 2)
 	s.Equal(s.logger.logs[0].message, "Retrying due to unknown exception")
-	s.Error(s.logger.logs[0].err, "failed to process")
+	s.EqualError(s.logger.logs[0].err, "failed to process")
 	s.Equal(s.logger.logs[1].message, "Failed to nack message")
-	s.Error(s.logger.logs[1].err, "failed to nack")
+	s.EqualError(s.logger.logs[1].err, "failed to nack")
+	s.backend.AssertExpectations(s.T())
 	s.validator.AssertExpectations(s.T())
 	s.callback.AssertExpectations(s.T())
 }
@@ -177,7 +218,8 @@ func (s *ConsumerTestSuite) TestProcessMessageAckFailure() {
 	s.consumer.processMessage(ctx, payload, attributes, providerMetadata)
 	s.Equal(len(s.logger.logs), 1)
 	s.Equal(s.logger.logs[0].message, "Failed to ack message")
-	s.Error(s.logger.logs[0].err, "failed to ack")
+	s.EqualError(s.logger.logs[0].err, "failed to ack")
+	s.backend.AssertExpectations(s.T())
 	s.validator.AssertExpectations(s.T())
 	s.callback.AssertExpectations(s.T())
 }
@@ -191,6 +233,7 @@ func (s *ConsumerTestSuite) TestListenForMessages() {
 		After(500 * time.Millisecond)
 	err := s.consumer.ListenForMessages(ctx, ListenRequest{numMessages, visibilityTimeoutS})
 	assert.EqualError(s.T(), err, "context canceled")
+	s.backend.AssertExpectations(s.T())
 }
 
 func (s *ConsumerTestSuite) TestNew() {
@@ -201,7 +244,7 @@ type ConsumerTestSuite struct {
 	suite.Suite
 	consumer  *queueConsumer
 	backend   *FakeBackend
-	validator *FakeValidator
+	validator *fakeValidator
 	callback  *fakeCallback
 	logger    *fakeLogger
 }
@@ -215,10 +258,10 @@ func (s *ConsumerTestSuite) SetupTest() {
 		AWSAccountID:     "1234567890",
 		QueueName:        "dev-myapp",
 		CallbackRegistry: &CallbackRegistry{CallbackKey{"user-created", 1}: callback.Callback},
-		GetLogger:        func(_ context.Context) Logger { return logger },
+		GetLogger:        func(_ context.Context) ILogger { return logger },
 	}
 	backend := &FakeBackend{}
-	validator := &FakeValidator{}
+	validator := &fakeValidator{}
 
 	s.consumer = NewQueueConsumer(settings, backend, validator).(*queueConsumer)
 	s.backend = backend

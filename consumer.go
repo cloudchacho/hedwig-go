@@ -6,6 +6,8 @@ package hedwig
 
 import (
 	"context"
+
+	"github.com/pkg/errors"
 )
 
 // ListenRequest represents a request to listen for messages
@@ -48,7 +50,8 @@ func (c *queueConsumer) processMessage(ctx context.Context, payload []byte, attr
 	var ok bool
 	if callback, ok = (*c.settings.CallbackRegistry)[callbackKey]; !ok {
 		loggingFields := LoggingFields{"message_body": payload}
-		c.settings.GetLogger(ctx).Error(err, "no callback defined for message", loggingFields)
+		msg := "no callback defined for message"
+		c.settings.GetLogger(ctx).Error(errors.New(msg), msg, loggingFields)
 		return
 	}
 
@@ -77,11 +80,7 @@ func (c *queueConsumer) ListenForMessages(ctx context.Context, request ListenReq
 		request.NumMessages = 1
 	}
 
-	if err := c.backend.Receive(ctx, request.NumMessages, request.VisibilityTimeoutS, c.processMessage); err != nil {
-		return err
-	}
-
-	return nil
+	return c.backend.Receive(ctx, request.NumMessages, request.VisibilityTimeoutS, c.processMessage)
 }
 
 func NewQueueConsumer(settings *Settings, backend IBackend, validator IMessageValidator) IQueueConsumer {

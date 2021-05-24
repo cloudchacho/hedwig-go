@@ -37,7 +37,7 @@ type IEncoder interface {
 	VerifyKnownMinorVersion(messageType string, version *semver.Version) error
 
 	// EncodeMessageType encodes the message type with appropriate format for transport over the wire
-	EncodeMessageType(messageType string, version *semver.Version) (string, error)
+	EncodeMessageType(messageType string, version *semver.Version) string
 
 	// DecodeMessageType decodes message type from meta attributes
 	DecodeMessageType(schema string) (string, *semver.Version, error)
@@ -61,10 +61,7 @@ func (v *messageValidator) Serialize(message *Message) ([]byte, map[string]strin
 		return nil, nil, err
 	}
 	v.verifyHeaders(message.Metadata.Headers)
-	schema, err := v.encoder.EncodeMessageType(message.Type, message.DataSchemaVersion)
-	if err != nil {
-		return nil, nil, err
-	}
+	schema := v.encoder.EncodeMessageType(message.Type, message.DataSchemaVersion)
 	metaAttrs := MetaAttributes{
 		message.Metadata.Timestamp,
 		message.Metadata.Publisher,
@@ -91,7 +88,7 @@ func (v *messageValidator) Deserialize(messagePayload []byte, attributes map[str
 		return nil, err
 	}
 	if !metaAttrs.FormatVersion.Equal(v.currentFormatVersion) {
-		return nil, errors.Errorf("Invalid format version: %s", metaAttrs.FormatVersion)
+		return nil, errors.Errorf("Invalid format version: %d.%d", metaAttrs.FormatVersion.Major(), metaAttrs.FormatVersion.Minor())
 	}
 	err = v.verifyHeaders(metaAttrs.Headers)
 	if err != nil {

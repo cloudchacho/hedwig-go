@@ -2,7 +2,8 @@ package hedwig
 
 import (
 	"context"
-	"errors"
+
+	"github.com/pkg/errors"
 )
 
 // DataRegistryKey is a key identifying a data registry

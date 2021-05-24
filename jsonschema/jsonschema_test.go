@@ -133,8 +133,7 @@ func (s *EncoderTestSuite) TestVerifyKnownMinorVersion() {
 }
 
 func (s *EncoderTestSuite) TestEncodeMessageType() {
-	messageType, err := s.encoder.EncodeMessageType("vehicle_created", semver.MustParse("1.0"))
-	s.NoError(err)
+	messageType := s.encoder.EncodeMessageType("vehicle_created", semver.MustParse("1.0"))
 	s.Equal(messageType, "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0")
 }
 
@@ -309,7 +308,7 @@ func (s *EncoderTestSuite) TestDecodeMessageType() {
 }
 
 func (s *EncoderTestSuite) TestDecodeData() {
-	data := json.RawMessage([]byte(`{"vehicle_id":"C_1234567890123456"}`))
+	data := json.RawMessage(`{"vehicle_id":"C_1234567890123456"}`)
 	messageType := "vehicle_created"
 	version := semver.MustParse("1.0")
 	metaAttrs := hedwig.MetaAttributes{
@@ -326,7 +325,7 @@ func (s *EncoderTestSuite) TestDecodeData() {
 }
 
 func (s *EncoderTestSuite) TestDecodeDataUnknownType() {
-	data := json.RawMessage([]byte(`{"vehicle_id":"C_1234567890123456"}`))
+	data := json.RawMessage(`{"vehicle_id":"C_1234567890123456"}`)
 	messageType := "unknown"
 	version := semver.MustParse("1.0")
 	metaAttrs := hedwig.MetaAttributes{
@@ -342,7 +341,7 @@ func (s *EncoderTestSuite) TestDecodeDataUnknownType() {
 }
 
 func (s *EncoderTestSuite) TestDecodeDataUnknownVersion() {
-	data := json.RawMessage([]byte(`{"vehicle_id":"C_1234567890123456"}`))
+	data := json.RawMessage(`{"vehicle_id":"C_1234567890123456"}`)
 	messageType := "vehicle_created"
 	version := semver.MustParse("2.0")
 	metaAttrs := hedwig.MetaAttributes{
@@ -358,7 +357,7 @@ func (s *EncoderTestSuite) TestDecodeDataUnknownVersion() {
 }
 
 func (s *EncoderTestSuite) TestDecodeDataInvalidSchema() {
-	data := json.RawMessage([]byte(`{"vehicle_id":"C_1234567890123456"}`))
+	data := json.RawMessage(`{"vehicle_id":"C_1234567890123456"}`)
 	messageType := "vehicle_created"
 	version := semver.MustParse("2.0")
 	metaAttrs := hedwig.MetaAttributes{
@@ -406,9 +405,9 @@ func (s *EncoderTestSuite) TestDecodeDataInvalidData() {
 }
 
 func (s *EncoderTestSuite) TestDecodeDataInvalidDataJSON() {
-	data := []byte(`{`)
+	data := json.RawMessage(`{`)
 	messageType := "vehicle_created"
-	version := semver.MustParse("2.0")
+	version := semver.MustParse("1.0")
 	metaAttrs := hedwig.MetaAttributes{
 		Timestamp:     time.Unix(1621550514, 0),
 		Publisher:     "myapp",
@@ -422,7 +421,7 @@ func (s *EncoderTestSuite) TestDecodeDataInvalidDataJSON() {
 }
 
 func (s *EncoderTestSuite) TestDecodeDataInvalidDataFactory() {
-	data := []byte(`{`)
+	data := json.RawMessage(`{}`)
 	messageType := "trip_created"
 	version := semver.MustParse("2.0")
 	metaAttrs := hedwig.MetaAttributes{
@@ -435,6 +434,27 @@ func (s *EncoderTestSuite) TestDecodeDataInvalidDataFactory() {
 	}
 	_, err := s.encoder.DecodeData(metaAttrs, messageType, version, data)
 	s.Error(err)
+}
+
+func (s *EncoderTestSuite) TestNew() {
+	assert.NotNil(s.T(), s.encoder)
+}
+
+type EncoderTestSuite struct {
+	suite.Suite
+	encoder *messageEncoder
+}
+
+func (s *EncoderTestSuite) SetupTest() {
+	registry := hedwig.DataFactoryRegistry{hedwig.DataRegistryKey{"vehicle_created", 1}: newFakeHedwigDataField}
+	encoder, err := NewMessageEncoder("schema.json", registry)
+	require.NoError(s.T(), err)
+
+	s.encoder = encoder.(*messageEncoder)
+}
+
+func TestEncoderTestSuite(t *testing.T) {
+	suite.Run(t, &EncoderTestSuite{})
 }
 
 func TestInvalidSchemaNoXVersion(t *testing.T) {
@@ -471,26 +491,21 @@ func TestInvalidSchemaNoXVersion(t *testing.T) {
 	`
 	v, err := NewEncoderFromBytes([]byte(schemaMissingXversions), hedwig.DataFactoryRegistry{})
 	assertions.Nil(v)
-	assertions.Error(err, "x-versions not defined for message for schemaURL: https://hedwig.automatic.com/schema/schemas/trip_created/1")
+	assertions.Error(err)
 }
 
-func (s *EncoderTestSuite) TestNew() {
-	assert.NotNil(s.T(), s.encoder)
+func TestInvalidSchemaNotJSON(t *testing.T) {
+	assertions := assert.New(t)
+	schemaNotObject := `"https://hedwig.automatic.com/schema"`
+	v, err := NewEncoderFromBytes([]byte(schemaNotObject), hedwig.DataFactoryRegistry{})
+	assertions.Nil(v)
+	assertions.Error(err)
 }
 
-type EncoderTestSuite struct {
-	suite.Suite
-	encoder *messageEncoder
-}
-
-func (s *EncoderTestSuite) SetupTest() {
-	registry := hedwig.DataFactoryRegistry{hedwig.DataRegistryKey{"vehicle_created", 1}: newFakeHedwigDataField}
-	encoder, err := NewMessageEncoder("schema.json", registry)
-	require.NoError(s.T(), err)
-
-	s.encoder = encoder.(*messageEncoder)
-}
-
-func TestEncoderTestSuite(t *testing.T) {
-	suite.Run(t, &EncoderTestSuite{})
+func TestInvalidSchemaNotObject(t *testing.T) {
+	assertions := assert.New(t)
+	schemaNotObject := `foobar`
+	v, err := NewEncoderFromBytes([]byte(schemaNotObject), hedwig.DataFactoryRegistry{})
+	assertions.Nil(v)
+	assertions.Error(err)
 }
