@@ -1,7 +1,4 @@
 /*
- * Copyright 2019, Automatic Inc.
- * All rights reserved.
- *
  * Author: Aniruddha Maru
  */
 

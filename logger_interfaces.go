@@ -1,7 +1,4 @@
 /*
- * Copyright 2019, Automatic Inc.
- * All rights reserved.
- *
  * Author: Aniruddha Maru
  */
 
@@ -16,8 +13,8 @@ import (
 
 type LoggingFields map[string]interface{}
 
-// Logger represents an logging interface that this library expects
-type Logger interface {
+// ILogger represents an logging interface that this library expects
+type ILogger interface {
 	// Error logs an error with a message. `fields` can be used as additional metadata for structured logging.
 	// You can generally expect one of these fields to be available: message_sqs_id, message_sns_id.
 	// By default fields are logged as a map using fmt.Sprintf
@@ -54,7 +51,7 @@ func (l *logrusLogger) Debug(message string, fields LoggingFields) {
 }
 
 func LogrusGetLoggerFunc(fn func(ctx context.Context) *logrus.Entry) GetLoggerFunc {
-	return func(ctx context.Context) Logger {
+	return func(ctx context.Context) ILogger {
 		return &logrusLogger{fn(ctx)}
 	}
 }

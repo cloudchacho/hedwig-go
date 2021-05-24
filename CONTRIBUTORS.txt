@@ -1,7 +1,8 @@
 Project Leads
+  Aniruddha Maru <https://github.com/maroux/>
   Michael Ngo <https://github.com/mngo87>
 
 Committers
-  Aniruddha Maru <https://github.com/maroux/>
-  Ryan Chong <https://github.com/chongr/>
   Jonathon Klobucar <https://github.com/klobucar>
+  Pete Emerson <https://github.com/pete0emerson>
+  Ryan Chong <https://github.com/chongr/>

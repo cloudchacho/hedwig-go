@@ -1,7 +1,4 @@
 /*
- * Copyright 2017, Automatic Inc.
- * All rights reserved.
- *
  * Author: Michael Ngo
  */
 
@@ -9,28 +6,36 @@ package hedwig
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/mock"
 
 	"github.com/Masterminds/semver"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+// fakeHedwigDataField is a fake data field for testing
+type fakeHedwigDataField struct {
+	VehicleID string `json:"vehicle_id"`
+}
+
+type fakePublisher struct {
+	mock.Mock
+}
+
+func (f *fakePublisher) Publish(ctx context.Context, message *Message) (string, error) {
+	args := f.Called(ctx, message)
+	return args.String(0), args.Error(1)
+}
+
 func createTestSettings() *Settings {
-	v, err := NewMessageValidator("schema.json")
-	if err != nil {
-		panic(err)
-	}
 	s := &Settings{
-		AWSRegion:        "us-east-1",
-		AWSAccountID:     "1234567890",
-		CallbackRegistry: NewCallbackRegistry(),
-		Publisher:        "myapp",
-		QueueName:        "DEV-MYAPP",
-		Validator:        v,
+		AWSRegion:     "us-east-1",
+		AWSAccountID:  "1234567890",
+		PublisherName: "myapp",
+		QueueName:     "DEV-MYAPP",
 	}
 	s.initDefaults()
 	return s
@@ -43,14 +48,13 @@ func TestCreateMetadata(t *testing.T) {
 	headers := map[string]string{"X-Request-Id": "abc123"}
 	settings := createTestSettings()
 
-	metadata, err := createMetadata(settings, headers)
+	metadata := createMetadata(settings, headers)
 	assertions.NotNil(metadata)
-	require.NoError(t, err)
 
 	assertions.Equal(headers, metadata.Headers)
-	assertions.Equal(settings.Publisher, metadata.Publisher)
-	assertions.Empty(metadata.Receipt)
-	assertions.True(time.Time(metadata.Timestamp).UnixNano() > now.UnixNano())
+	assertions.Equal(settings.PublisherName, metadata.Publisher)
+	assertions.Nil(metadata.ProviderMetadata)
+	assertions.True(time.Time(metadata.Timestamp).UnixNano() >= now.UnixNano())
 }
 
 func TestNewMessageWithIDSuccess(t *testing.T) {
@@ -58,36 +62,24 @@ func TestNewMessageWithIDSuccess(t *testing.T) {
 
 	headers := map[string]string{"X-Request-Id": "abc123"}
 	settings := createTestSettings()
-	metadata, err := createMetadata(settings, headers)
+	metadata := createMetadata(settings, headers)
 	assertions.NotNil(metadata)
-	require.NoError(t, err)
 
 	id := "abcdefgh"
 	msgDataType := "vehicle_created"
 	msgDataSchemaVersion := "1.0"
-	data := FakeHedwigDataField{}
+	data := fakeHedwigDataField{}
 
 	m, err := newMessageWithID(settings, id, msgDataType, msgDataSchemaVersion, metadata, &data)
 	require.NoError(t, err)
 
-	expectedSchema := fmt.Sprintf(
-		"%s#/schemas/%s/%s", settings.Validator.SchemaRoot(), msgDataType, msgDataSchemaVersion)
-
-	assertions.Equal(data, *m.Data.(*FakeHedwigDataField))
+	assertions.Equal(data, *m.Data.(*fakeHedwigDataField))
 	assertions.Equal(headers, metadata.Headers)
-	assertions.Equal(settings.Publisher, metadata.Publisher)
-	assertions.Equal(FormatVersionV1, m.FormatVersion)
 	assertions.Equal(id, m.ID)
-	assertions.Equal(expectedSchema, m.Schema)
-	assertions.Equal(msgDataType, m.dataType)
+	assertions.Equal(msgDataType, m.Type)
 	ver, err := semver.NewVersion(msgDataSchemaVersion)
 	assertions.NoError(err)
 	assertions.Equal(ver, m.DataSchemaVersion)
-	assertions.Equal(settings.CallbackRegistry, m.callbackRegistry)
-	assertions.Equal(settings.Validator, m.validator)
-
-	// Set after validation
-	assertions.Nil(m.callback)
 }
 
 func TestNewMessageWithIDEmptySchemaVersion(t *testing.T) {
@@ -95,34 +87,14 @@ func TestNewMessageWithIDEmptySchemaVersion(t *testing.T) {
 
 	headers := map[string]string{"X-Request-Id": "abc123"}
 	settings := createTestSettings()
-	metadata, err := createMetadata(settings, headers)
+	metadata := createMetadata(settings, headers)
 	assertions.NotNil(metadata)
-	require.NoError(t, err)
 
 	id := "abcdefgh"
 	msgDataType := "vehicle_created"
 	msgDataSchemaVersion := ""
 
-	_, err = newMessageWithID(settings, id, msgDataType, msgDataSchemaVersion, metadata, &FakeHedwigDataField{})
-	assertions.NotNil(err)
-}
-
-func TestNewMessageWithIDInvalidCallbackRegistry(t *testing.T) {
-	assertions := assert.New(t)
-
-	headers := map[string]string{"X-Request-Id": "abc123"}
-	settings := createTestSettings()
-	settings.CallbackRegistry = nil
-	metadata, err := createMetadata(settings, headers)
-	assertions.NotNil(metadata)
-	require.NoError(t, err)
-
-	id := "abcdefgh"
-	msgDataType := "vehicle_created"
-	msgDataSchemaVersion := "1.0"
-	data := FakeHedwigDataField{}
-
-	_, err = newMessageWithID(settings, id, msgDataType, msgDataSchemaVersion, metadata, &data)
+	_, err := newMessageWithID(settings, id, msgDataType, msgDataSchemaVersion, metadata, &fakeHedwigDataField{})
 	assertions.NotNil(err)
 }
 
@@ -131,28 +103,14 @@ func TestNewMessageWithIDInvalidSchemaVersion(t *testing.T) {
 
 	headers := map[string]string{"X-Request-Id": "abc123"}
 	settings := createTestSettings()
-	metadata, err := createMetadata(settings, headers)
+	metadata := createMetadata(settings, headers)
 	assertions.NotNil(metadata)
-	require.NoError(t, err)
 
 	id := "abcdefgh"
 	msgDataType := "vehicle_created"
 	msgDataSchemaVersion := "a.b"
 
-	_, err = newMessageWithID(settings, id, msgDataType, msgDataSchemaVersion, metadata, &FakeHedwigDataField{})
-	assertions.NotNil(err)
-}
-
-func TestNewMessageWithIDNilMetadata(t *testing.T) {
-	assertions := assert.New(t)
-
-	settings := createTestSettings()
-
-	id := "abcdefgh"
-	msgDataType := "vehicle_created"
-	msgDataSchemaVersion := "1.0"
-
-	_, err := newMessageWithID(settings, id, msgDataType, msgDataSchemaVersion, nil, &FakeHedwigDataField{})
+	_, err := newMessageWithID(settings, id, msgDataType, msgDataSchemaVersion, metadata, &fakeHedwigDataField{})
 	assertions.NotNil(err)
 }
 
@@ -161,16 +119,61 @@ func TestNewMessageWithIDNilData(t *testing.T) {
 
 	headers := map[string]string{"X-Request-Id": "abc123"}
 	settings := createTestSettings()
-	metadata, err := createMetadata(settings, headers)
+	metadata := createMetadata(settings, headers)
 	assertions.NotNil(metadata)
-	require.NoError(t, err)
 
 	id := "abcdefgh"
 	msgDataType := "vehicle_created"
 	msgDataSchemaVersion := "1.0"
 
-	_, err = newMessageWithID(settings, id, msgDataType, msgDataSchemaVersion, metadata, nil)
+	_, err := newMessageWithID(settings, id, msgDataType, msgDataSchemaVersion, metadata, nil)
 	assertions.NotNil(err)
+}
+
+func TestMessageSerialize(t *testing.T) {
+	settings := createTestSettings()
+	msgDataType := "vehicle_created"
+	msgDataSchemaVersion := "1.0"
+	data := fakeHedwigDataField{}
+	m, err := NewMessage(settings, msgDataType, msgDataSchemaVersion, nil, &data)
+	require.NoError(t, err)
+
+	validator := &fakeValidator{}
+	payload := []byte(`{"type": "user-created"}`)
+	headers := map[string]string{}
+
+	validator.On("Serialize", m).
+		Return(payload, headers, nil)
+
+	returnedPayload, returnedHeaders, err := m.Serialize(validator)
+	assert.NoError(t, err)
+	assert.Equal(t, payload, returnedPayload)
+	assert.Equal(t, headers, returnedHeaders)
+
+	validator.AssertExpectations(t)
+}
+
+func TestMessagePublish(t *testing.T) {
+	ctx := context.Background()
+
+	settings := createTestSettings()
+	msgDataType := "vehicle_created"
+	msgDataSchemaVersion := "1.0"
+	data := fakeHedwigDataField{}
+	m, err := NewMessage(settings, msgDataType, msgDataSchemaVersion, nil, &data)
+	require.NoError(t, err)
+
+	publisher := &fakePublisher{}
+	messageId := "123"
+
+	publisher.On("Publish", ctx, m).
+		Return(messageId, nil)
+
+	returnedMessageId, err := m.Publish(ctx, publisher)
+	assert.NoError(t, err)
+	assert.Equal(t, messageId, returnedMessageId)
+
+	publisher.AssertExpectations(t)
 }
 
 func TestNewMessage(t *testing.T) {
@@ -180,239 +183,16 @@ func TestNewMessage(t *testing.T) {
 	settings := createTestSettings()
 	msgDataType := "vehicle_created"
 	msgDataSchemaVersion := "1.0"
-	data := FakeHedwigDataField{}
+	data := fakeHedwigDataField{}
 
 	m, err := NewMessage(settings, msgDataType, msgDataSchemaVersion, headers, &data)
 	require.NoError(t, err)
 
-	expectedSchema := fmt.Sprintf(
-		"%s#/schemas/%s/%s", settings.Validator.SchemaRoot(), msgDataType, msgDataSchemaVersion)
-
-	assertions.Equal(data, *m.Data.(*FakeHedwigDataField))
-	assertions.Equal(FormatVersionV1, m.FormatVersion)
+	assertions.Equal(data, *m.Data.(*fakeHedwigDataField))
 	assertions.True(len(m.ID) > 0 && len(m.ID) < 40)
 	assertions.Equal(headers, m.Metadata.Headers)
-	assertions.Equal(expectedSchema, m.Schema)
 	ver, err := semver.NewVersion(msgDataSchemaVersion)
 	assertions.NoError(err)
 	assertions.Equal(ver, m.DataSchemaVersion)
-	assertions.Equal(msgDataType, m.dataType)
-	assertions.Equal(settings.Validator, m.validator)
-}
-
-func TestMessageJSONString(t *testing.T) {
-	assertions := assert.New(t)
-	require := require.New(t)
-
-	headers := map[string]string{"X-Request-Id": "abc123"}
-	settings := createTestSettings()
-	msgDataType := "vehicle_created"
-	msgDataSchemaVersion := "1.0"
-	data := FakeHedwigDataField{
-		VehicleID: "C_123",
-	}
-
-	m, err := NewMessage(settings, msgDataType, msgDataSchemaVersion, headers, &data)
-	require.NoError(err)
-
-	jsonStr, err := m.JSONString()
-	require.NoError(err)
-
-	b := []byte(jsonStr)
-	var jsonObj map[string]interface{}
-	err = json.Unmarshal(b, &jsonObj)
-	require.NoError(err)
-
-	// Expecting data, format version, id, metadata, schema
-	assertions.Equal(5, len(jsonObj))
-
-	v, ok := jsonObj["format_version"]
-	require.True(ok)
-	vStr, ok := v.(string)
-	require.True(ok)
-	assertions.Equal(FormatCurrentVersion, vStr)
-
-	v, ok = jsonObj["id"]
-	require.True(ok)
-	vStr, ok = v.(string)
-	require.True(ok)
-	assertions.Equal(vStr, m.ID)
-
-	v, ok = jsonObj["schema"]
-	require.True(ok)
-	assertions.Equal(m.Schema, v)
-
-	v, ok = jsonObj["metadata"]
-	require.True(ok)
-	metadata, ok := v.(map[string]interface{})
-	require.True(ok)
-
-	publisher, ok := metadata["publisher"]
-	require.True(ok)
-	publisherStr, ok := publisher.(string)
-	require.True(ok)
-	assertions.Equal(m.Metadata.Publisher, publisherStr)
-
-	timestamp, ok := metadata["timestamp"]
-	require.True(ok)
-	expectedTimestamp := time.Time(m.Metadata.Timestamp).UnixNano() / int64(time.Millisecond)
-	assertions.Equal(float64(expectedTimestamp), timestamp)
-
-	v, ok = jsonObj["data"]
-	require.True(ok)
-	dataObj, ok := v.(map[string]interface{})
-	require.True(ok)
-	JSONStringvehicleID, ok := dataObj["vehicle_id"]
-	require.True(ok)
-	assertions.Equal(data.VehicleID, JSONStringvehicleID)
-}
-
-func TestMessageTopic(t *testing.T) {
-	assertions := assert.New(t)
-
-	msgDataType := "vehicle_created"
-	msgDataSchemaVersion := 1
-	data := FakeHedwigDataField{
-		VehicleID: "C_123",
-	}
-
-	expectedTopic := "dev-vehicle-created"
-	settings := createTestSettings()
-	settings.MessageRouting = map[MessageRouteKey]string{
-		{
-			MessageType:         msgDataType,
-			MessageMajorVersion: msgDataSchemaVersion,
-		}: expectedTopic,
-	}
-
-	m, err := NewMessage(settings, msgDataType, "1.0", map[string]string{}, &data)
-	require.NoError(t, err)
-
-	topic, err := m.topic(settings)
-	require.NoError(t, err)
-	assertions.Equal(expectedTopic, topic)
-}
-
-func TestValidateSuccess(t *testing.T) {
-	msgDataType := "vehicle_created"
-	msgDataSchemaVersion := "1.0"
-	data := FakeHedwigDataField{
-		VehicleID: "C_1234567890123456",
-	}
-
-	settings := createTestSettings()
-
-	m, err := NewMessage(settings, msgDataType, msgDataSchemaVersion, map[string]string{}, &data)
-	require.NoError(t, err)
-
-	err = m.validate()
-	require.NoError(t, err)
-}
-
-func TestValidateFailSchema(t *testing.T) {
-	assertions := assert.New(t)
-
-	msgDataType := "vehicle_created"
-	msgDataSchemaVersion := "1.0"
-	data := FakeHedwigDataField{
-		VehicleID: "C_1234567890123456",
-	}
-
-	settings := createTestSettings()
-
-	m, err := NewMessage(settings, msgDataType, msgDataSchemaVersion, map[string]string{}, &data)
-	m.Schema = "foo"
-	require.NoError(t, err)
-
-	err = m.validate()
-	assertions.NotNil(err)
-}
-
-func TestValidateFailSchemaVersion(t *testing.T) {
-	assertions := assert.New(t)
-
-	msgDataType := "vehicle_created"
-	msgDataSchemaVersion := "1.0"
-	data := FakeHedwigDataField{
-		VehicleID: "C_1234567890123456",
-	}
-
-	settings := createTestSettings()
-
-	m, err := NewMessage(settings, msgDataType, msgDataSchemaVersion, map[string]string{}, &data)
-	m.Schema = "https://hedwig.automatic.com/schema#/schemas/trip_created/foo"
-	require.NoError(t, err)
-
-	err = m.validate()
-	assertions.NotNil(err)
-}
-
-func TestValidateFailMessage(t *testing.T) {
-	assertions := assert.New(t)
-
-	settings := createTestSettings()
-	msgDataType := "vehicle_created"
-	msgDataSchemaVersion := "1.0"
-	data := struct {
-		Blah int
-	}{Blah: 12}
-
-	m, err := NewMessage(settings, msgDataType, msgDataSchemaVersion, map[string]string{}, &data)
-	require.NoError(t, err)
-
-	err = m.validate()
-	assertions.NotNil(err)
-}
-
-func TestValidateCallbackValid(t *testing.T) {
-	assertions := assert.New(t)
-
-	msgDataType := "vehicle_created"
-	msgDataSchemaVersion := 1
-	data := FakeHedwigDataField{
-		VehicleID: "C_1234567890123456",
-	}
-
-	settings := createTestSettings()
-	expectedCallbackFn := func(ctx context.Context, m *Message) error { return nil }
-
-	cbk := CallbackKey{
-		MessageType:         msgDataType,
-		MessageMajorVersion: msgDataSchemaVersion,
-	}
-	settings.CallbackRegistry.RegisterCallback(cbk, expectedCallbackFn, func() interface{} { return new(FakeHedwigDataField) })
-
-	m, err := NewMessage(settings, msgDataType, "1.0", map[string]string{}, &data)
-	require.NoError(t, err)
-
-	err = m.validateCallback(settings)
-	assertions.Nil(err)
-
-	assertions.NotNil(m.callback)
-}
-
-func TestValidateCallbackInvalid(t *testing.T) {
-	assertions := assert.New(t)
-
-	msgDataType := "vehicle_created"
-	msgDataSchemaVersion := "1.0"
-	data := FakeHedwigDataField{
-		VehicleID: "C_1234567890123456",
-	}
-
-	expectedCallback := func(ctx context.Context, m *Message) error { return nil }
-	settings := createTestSettings()
-
-	cbk := CallbackKey{
-		MessageType:         msgDataType,
-		MessageMajorVersion: 2,
-	}
-	settings.CallbackRegistry.RegisterCallback(cbk, expectedCallback, func() interface{} { return new(FakeHedwigDataField) })
-
-	m, err := NewMessage(settings, msgDataType, msgDataSchemaVersion, map[string]string{}, &data)
-	require.NoError(t, err)
-
-	err = m.validateCallback(settings)
-	assertions.NotNil(err)
-	assertions.Nil(m.callback)
+	assertions.Equal(msgDataType, m.Type)
 }

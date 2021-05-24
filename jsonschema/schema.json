@@ -22,10 +22,7 @@
                         "$ref": "https://hedwig.automatic.com/schema#/definitions/VIN/1.0"
                     }
                 },
-                "x-versions": [
-                    "1.0",
-                    "1.1"
-                ]
+                "x-version": "1.1"
             },
             "2.*": {
                 "description": "This is a message type",
@@ -46,9 +43,7 @@
                         "$ref": "https://hedwig.automatic.com/schema#/definitions/VIN/1.0"
                     }
                 },
-                "x-versions": [
-                    "2.0"
-                ]
+                "x-version": "2.0"
             }
         },
         "device_created": {
@@ -67,9 +62,7 @@
                         "$ref": "https://hedwig.automatic.com/schema#/definitions/UserId/1.0"
                     }
                 },
-                "x-versions": [
-                    "1.0"
-                ]
+                "x-version": "1.0"
             }
         },
         "vehicle_created": {
@@ -84,9 +77,7 @@
                         "$ref": "https://hedwig.automatic.com/schema#/definitions/VehicleId/1.0"
                     }
                 },
-                "x-versions": [
-                    "1.0"
-                ]
+                "x-version": "1.0"
             }
         }
     },

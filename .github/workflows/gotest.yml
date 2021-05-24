@@ -42,3 +42,9 @@ jobs:
           GITHUB_CI: true
           ISOLATED_BACKEND_TEST: ${{ matrix.isolated_backend_test }}
           ISOLATED_VALIDATOR_TEST: ${{ matrix.isolated_validator_test }}
+
+      - id: covecov
+        name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v1
+        with:
+          files: ./coverage.txt,./aws/coverage.txt,./jsonschema/coverage.txt

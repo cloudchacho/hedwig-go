@@ -1,7 +1,4 @@
 /*
- * Copyright 2017, Automatic Inc.
- * All rights reserved.
- *
  * Author: Michael Ngo
  */
 
@@ -15,54 +12,50 @@ import (
 
 // IPublisher handles all publish related functions
 type IPublisher interface {
-	Publish(ctx context.Context, message *Message) error
+	// Publish a message on Hedwig infrastructure
+	Publish(ctx context.Context, message *Message) (string, error)
 }
 
 // Publisher handles hedwig publishing for Automatic
 type Publisher struct {
-	awsClient iAmazonWebServicesClient
 	settings  *Settings
+	backend   IBackend
+	validator IMessageValidator
 }
 
 // Publish a message on Hedwig
-func (p *Publisher) Publish(ctx context.Context, message *Message) error {
-	err := message.validate()
+func (p *Publisher) Publish(ctx context.Context, message *Message) (string, error) {
+	payload, attributes, err := p.validator.Serialize(message)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	if p.settings.MessageDefaultHeadersHook != nil {
-		defaultHeaders := p.settings.MessageDefaultHeadersHook(ctx, message)
-		for k := range message.Metadata.Headers {
-			defaultHeaders[k] = message.Metadata.Headers[k]
-		}
-		message.Metadata.Headers = defaultHeaders
+	key := MessageRouteKey{
+		MessageType:         message.Type,
+		MessageMajorVersion: int(message.DataSchemaVersion.Major()),
 	}
 
-	messageBodyStr, err := message.JSONString()
-	if err != nil {
-		return err
-	}
-	if p.settings.PreSerializeHook != nil {
-		if err := p.settings.PreSerializeHook(&ctx, &messageBodyStr); err != nil {
-			return errors.Wrap(err, "Failed to process pre serialize hook")
-		}
+	topic, ok := p.settings.MessageRouting[key]
+	if !ok {
+		return "", errors.New("Message route is not defined for message")
 	}
 
-	topic, err := message.topic(p.settings)
-	if err != nil {
-		return err
-	}
-
-	return p.awsClient.PublishSNS(ctx, p.settings, topic, messageBodyStr, message.Metadata.Headers)
+	return p.backend.Publish(ctx, message, payload, attributes, topic)
 }
 
 // NewPublisher creates a new Publisher
-func NewPublisher(sessionCache *AWSSessionsCache, settings *Settings) IPublisher {
+// messageRouting: Maps message type and major version to topic names
+//   <message type>, <message version> => topic name
+// An entry is required for every message type that the app wants to consumer or publish. It is
+// recommended that major versions of a message be published on separate topics.
+func NewPublisher(
+	settings *Settings, backend IBackend, validator IMessageValidator,
+) IPublisher {
 	settings.initDefaults()
 
 	return &Publisher{
-		awsClient: newAWSClient(sessionCache, settings),
 		settings:  settings,
+		backend:   backend,
+		validator: validator,
 	}
 }

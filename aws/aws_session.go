@@ -1,14 +1,13 @@
 /*
- * Copyright 2017, Automatic Inc.
- * All rights reserved.
- *
  * Author: Michael Ngo
  */
 
-package hedwig
+package aws
 
 import (
 	"sync"
+
+	"github.com/cloudchacho/hedwig-go"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -51,22 +50,17 @@ func NewAWSSessionsCache() *AWSSessionsCache {
 	}
 }
 
-func (c *AWSSessionsCache) getOrCreateSession(settings *Settings) *session.Session {
-	region := settings.AWSRegion
-	awsAccessKey := settings.AWSAccessKey
-	awsSecretAccessKey := settings.AWSSecretKey
-	awsSessionToken := settings.AWSSessionToken
-
-	key := sessionKey{awsRegion: region, awsAccessKeyID: awsAccessKey, awsSessionToken: awsSessionToken}
+func (c *AWSSessionsCache) getOrCreateSession(settings *hedwig.Settings) *session.Session {
+	key := sessionKey{awsRegion: settings.AWSRegion, awsAccessKeyID: settings.AWSAccessKey, awsSessionToken: settings.AWSSessionToken}
 	s, ok := c.sessionMap.Load(key)
 	if !ok {
-		s = createSession(region, awsAccessKey, awsSecretAccessKey, awsSessionToken)
+		s = createSession(settings.AWSRegion, settings.AWSAccessKey, settings.AWSSecretKey, settings.AWSSessionToken)
 		c.sessionMap.Store(key, s)
 	}
 	return s.(*session.Session)
 }
 
 // GetSession retrieves a session if it is cached, otherwise creates one
-func (c *AWSSessionsCache) GetSession(settings *Settings) *session.Session {
+func (c *AWSSessionsCache) GetSession(settings *hedwig.Settings) *session.Session {
 	return c.getOrCreateSession(settings)
 }

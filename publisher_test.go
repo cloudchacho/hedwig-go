@@ -1,7 +1,4 @@
 /*
- * Copyright 2017, Automatic Inc.
- * All rights reserved.
- *
  * Author: Michael Ngo
  */
 
@@ -9,231 +6,114 @@ package hedwig
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/pkg/errors"
+
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 )
 
-type FakeMessageDefaultHeadersHook struct {
-	mock.Mock
-}
-
-func (fmdhh *FakeMessageDefaultHeadersHook) MessageDefaultHeadersHook(ctx context.Context, message *Message) map[string]string {
-	args := fmdhh.Called(ctx, message)
-	return args.Get(0).(map[string]string)
-}
-
-type FakePreSerializeHook struct {
-	mock.Mock
-}
-
-func (fpsh *FakePreSerializeHook) PreSerializeHook(ctx *context.Context, messageData *string) error {
-	args := fpsh.Called(ctx, messageData)
-	return args.Error(0)
-}
-
-func TestPublishNoHooks(t *testing.T) {
-	assertions := assert.New(t)
-
+func (s *PublisherTestSuite) TestPublish() {
 	ctx := context.Background()
-	settings := createTestSettings()
-	settings.MessageRouting = map[MessageRouteKey]string{
-		{
-			MessageType:         "vehicle_created",
-			MessageMajorVersion: 1,
-		}: "dev-vehicle-created",
-	}
-	awsClient := &FakeAWSClient{}
 
-	publisher := &Publisher{
-		awsClient: awsClient,
-		settings:  settings,
-	}
-
-	data := FakeHedwigDataField{
+	data := fakeHedwigDataField{
 		VehicleID: "C_1234567890123456",
 	}
-	message, err := NewMessage(settings, "vehicle_created", "1.0", nil, &data)
-	require.NoError(t, err)
-	topic, err := message.topic(settings)
-	require.NoError(t, err)
-	messageBody, err := json.Marshal(message)
-	require.NoError(t, err)
-	messageBodyStr := string(messageBody)
+	message, err := NewMessage(s.settings, "user-created", "1.0", nil, &data)
+	s.Require().NoError(err)
 
-	awsClient.On("PublishSNS", ctx, settings, topic, messageBodyStr, message.Metadata.Headers).Return(nil)
+	payload := []byte(`{"type": "user-created"}`)
+	headers := map[string]string{}
 
-	err = publisher.Publish(ctx, message)
-	assertions.Nil(err)
+	s.validator.On("Serialize", message).
+		Return(payload, headers, nil)
 
-	awsClient.AssertExpectations(t)
+	messageId := "123"
+
+	s.backend.On("Publish", ctx, message, payload, headers, "dev-user-created-v1").
+		Return(messageId, nil)
+
+	receivedMessageId, err := s.publisher.Publish(ctx, message)
+	s.Nil(err)
+	s.Equal(messageId, receivedMessageId)
+
+	s.backend.AssertExpectations(s.T())
 }
 
-func TestPublish(t *testing.T) {
-	assertions := assert.New(t)
-
-	fakeMessageDefaultHeadersHook := &FakeMessageDefaultHeadersHook{}
-	fakePreSerializeHook := &FakePreSerializeHook{}
-
+func (s *PublisherTestSuite) TestPublishTopicError() {
 	ctx := context.Background()
-	settings := createTestSettings()
-	settings.MessageDefaultHeadersHook = fakeMessageDefaultHeadersHook.MessageDefaultHeadersHook
-	settings.MessageRouting = map[MessageRouteKey]string{
-		{
-			MessageType:         "vehicle_created",
-			MessageMajorVersion: 1,
-		}: "dev-vehicle-created",
-	}
-	settings.PreSerializeHook = fakePreSerializeHook.PreSerializeHook
-	awsClient := &FakeAWSClient{}
 
-	publisher := &Publisher{
-		awsClient: awsClient,
-		settings:  settings,
-	}
-
-	headers := map[string]string{
-		"key": "value",
-	}
-	data := FakeHedwigDataField{
+	data := fakeHedwigDataField{
 		VehicleID: "C_1234567890123456",
 	}
-	message, err := NewMessage(settings, "vehicle_created", "1.0", headers, &data)
-	require.NoError(t, err)
-	topic, err := message.topic(settings)
-	require.NoError(t, err)
+	message, err := NewMessage(s.settings, "user-created", "2.0", nil, &data)
+	s.Require().NoError(err)
 
-	defaultHeaders := map[string]string{
-		"foo":  "bar",
-		"boom": "blah",
-	}
-	fakeMessageDefaultHeadersHook.On("MessageDefaultHeadersHook", ctx, message).Return(defaultHeaders)
+	payload := []byte(`{"type": "user-created"}`)
+	headers := map[string]string{}
 
-	message.Metadata.Headers = map[string]string{
-		"key":  "value",
-		"foo":  "bar",
-		"boom": "blah",
-	}
-	msg, err := message.JSONString()
-	require.NoError(t, err)
-	fakePreSerializeHook.On("PreSerializeHook", &ctx, &msg).Return(nil)
+	s.validator.On("Serialize", message).
+		Return(payload, headers, nil)
 
-	require.NoError(t, err)
-	messageBody, err := json.Marshal(message)
-	require.NoError(t, err)
-	messageBodyStr := string(messageBody)
+	_, err = s.publisher.Publish(ctx, message)
+	s.EqualError(err, "Message route is not defined for message")
 
-	awsClient.On("PublishSNS", ctx, settings, topic, messageBodyStr, message.Metadata.Headers).Return(nil)
-
-	err = publisher.Publish(ctx, message)
-	assertions.Nil(err)
-
-	awsClient.AssertExpectations(t)
-	fakeMessageDefaultHeadersHook.AssertExpectations(t)
-	fakePreSerializeHook.AssertExpectations(t)
+	s.backend.AssertExpectations(s.T())
 }
 
-func TestPublishPreSerializeHookError(t *testing.T) {
-	assertions := assert.New(t)
-
-	fakePreSerializeHook := &FakePreSerializeHook{}
-
+func (s *PublisherTestSuite) TestPublishSerializeError() {
 	ctx := context.Background()
-	settings := createTestSettings()
-	settings.MessageRouting = map[MessageRouteKey]string{
-		{
-			MessageType:         "vehicle_created",
-			MessageMajorVersion: 1,
-		}: "dev-vehicle-created",
-	}
-	settings.PreSerializeHook = fakePreSerializeHook.PreSerializeHook
-	awsClient := &FakeAWSClient{}
 
-	publisher := &Publisher{
-		awsClient: awsClient,
-		settings:  settings,
-	}
-
-	headers := map[string]string{
-		"key": "value",
-	}
-	data := FakeHedwigDataField{
+	data := fakeHedwigDataField{
 		VehicleID: "C_1234567890123456",
 	}
-	message, err := NewMessage(settings, "vehicle_created", "1.0", headers, &data)
-	require.NoError(t, err)
+	message, err := NewMessage(s.settings, "user-created", "2.0", nil, &data)
+	s.Require().NoError(err)
 
-	message.Metadata.Headers = map[string]string{
-		"key":  "value",
-		"foo":  "bar",
-		"boom": "blah",
-	}
-	msg, err := message.JSONString()
-	require.NoError(t, err)
+	s.validator.On("Serialize", message).
+		Return([]byte(""), map[string]string{}, errors.New("failed to serialize"))
 
-	fakePreSerializeHook.On("PreSerializeHook", &ctx, &msg).Return(errors.Errorf("Fake error!"))
+	_, err = s.publisher.Publish(ctx, message)
+	s.EqualError(err, "failed to serialize")
 
-	require.NoError(t, err)
-
-	err = publisher.Publish(ctx, message)
-	assertions.EqualError(errors.Cause(err), "Fake error!")
-
-	awsClient.AssertExpectations(t)
-	fakePreSerializeHook.AssertExpectations(t)
+	s.backend.AssertExpectations(s.T())
 }
 
-func TestPublishTopicError(t *testing.T) {
-	assertions := assert.New(t)
-
-	fakePreSerializeHook := &FakePreSerializeHook{}
-
-	ctx := context.Background()
-	settings := createTestSettings()
-	settings.MessageRouting = map[MessageRouteKey]string{}
-	settings.PreSerializeHook = fakePreSerializeHook.PreSerializeHook
-	awsClient := &FakeAWSClient{}
-
-	publisher := &Publisher{
-		awsClient: awsClient,
-		settings:  settings,
-	}
-
-	headers := map[string]string{
-		"key": "value",
-	}
-	data := FakeHedwigDataField{
-		VehicleID: "C_1234567890123456",
-	}
-	message, err := NewMessage(settings, "vehicle_created", "1.0", headers, &data)
-	require.NoError(t, err)
-
-	message.Metadata.Headers = map[string]string{
-		"key":  "value",
-		"foo":  "bar",
-		"boom": "blah",
-	}
-	msg, err := message.JSONString()
-	require.NoError(t, err)
-
-	fakePreSerializeHook.On("PreSerializeHook", &ctx, &msg).Return(nil)
-
-	require.NoError(t, err)
-
-	err = publisher.Publish(ctx, message)
-	assertions.EqualError(errors.Cause(err), "Message route is not defined for message")
-
-	awsClient.AssertExpectations(t)
-	fakePreSerializeHook.AssertExpectations(t)
+func (s *PublisherTestSuite) TestNew() {
+	assert.NotNil(s.T(), s.publisher)
 }
 
-func TestNewPublisher(t *testing.T) {
-	settings := createTestSettings()
-	sessionCache := &AWSSessionsCache{}
+type PublisherTestSuite struct {
+	suite.Suite
+	publisher *Publisher
+	backend   *fakeBackend
+	validator *fakeValidator
+	callback  *fakeCallback
+	settings  *Settings
+}
 
-	publisher := NewPublisher(sessionCache, settings)
-	assert.NotNil(t, publisher)
+func (s *PublisherTestSuite) SetupTest() {
+	settings := &Settings{
+		AWSRegion:    "us-east-1",
+		AWSAccountID: "1234567890",
+		QueueName:    "dev-myapp",
+		MessageRouting: map[MessageRouteKey]string{
+			{
+				MessageType:         "user-created",
+				MessageMajorVersion: 1,
+			}: "dev-user-created-v1",
+		},
+	}
+	backend := &fakeBackend{}
+	validator := &fakeValidator{}
+
+	s.publisher = NewPublisher(settings, backend, validator).(*Publisher)
+	s.backend = backend
+	s.validator = validator
+	s.settings = settings
+}
+
+func TestPublisherTestSuite(t *testing.T) {
+	suite.Run(t, &PublisherTestSuite{})
 }
