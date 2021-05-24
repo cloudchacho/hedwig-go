@@ -106,7 +106,7 @@ func (s *ValidatorTestSuite) TestSerializeUnknownMinor() {
 	s.encoder.On("VerifyKnownMinorVersion", message.Type, message.DataSchemaVersion).Return(errors.New("unknown minor version"))
 
 	_, _, err = s.validator.Serialize(message)
-	assert.Error(s.T(), err, "unknown minor version")
+	s.EqualError(err, "unknown minor version")
 
 	s.encoder.AssertExpectations(s.T())
 }
@@ -132,7 +132,7 @@ func (s *ValidatorTestSuite) TestSerializeEncodeFailed() {
 		Return([]byte(""), map[string]string{}, errors.New("can't serialize data"))
 
 	_, _, err = s.validator.Serialize(message)
-	assert.Error(s.T(), err, "can't serialize data")
+	s.EqualError(err, "can't serialize data")
 
 	s.encoder.AssertExpectations(s.T())
 }
@@ -163,7 +163,7 @@ func (s *ValidatorTestSuite) TestSerializeValidationFailure() {
 		Return(MetaAttributes{}, nil, errors.New("invalid payload"))
 
 	_, _, err = s.validator.Serialize(message)
-	assert.Error(s.T(), err, "invalid payload")
+	s.EqualError(err, "invalid payload")
 
 	s.encoder.AssertExpectations(s.T())
 }
@@ -206,7 +206,7 @@ func (s *ValidatorTestSuite) TestDeserializeExtractionFailure() {
 		Return(MetaAttributes{}, nil, errors.New("invalid payload"))
 
 	_, err := s.validator.Deserialize(payload, attributes, nil)
-	assert.Error(s.T(), err, "invalid payload")
+	s.EqualError(err, "invalid payload")
 
 	s.encoder.AssertExpectations(s.T())
 }
@@ -234,7 +234,7 @@ func (s *ValidatorTestSuite) TestDeserializeUnknownMessageType() {
 	s.encoder.On("DecodeMessageType", schema).Return(message.Type, message.DataSchemaVersion, errors.New("invalid message type"))
 
 	_, err = s.validator.Deserialize(payload, attributes, nil)
-	assert.Error(s.T(), err, "invalid message type")
+	s.EqualError(err, "invalid message type")
 
 	s.encoder.AssertExpectations(s.T())
 }
@@ -263,7 +263,7 @@ func (s *ValidatorTestSuite) TestDeserializeInvalidData() {
 	s.encoder.On("DecodeData", metaAttrs, message.Type, message.DataSchemaVersion, data).Return(message.Data, errors.New("invalid data"))
 
 	_, err = s.validator.Deserialize(payload, attributes, nil)
-	assert.Error(s.T(), err, "invalid data")
+	s.EqualError(err, "invalid data")
 
 	s.encoder.AssertExpectations(s.T())
 }

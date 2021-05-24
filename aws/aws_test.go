@@ -149,6 +149,8 @@ func (s *BackendTestSuite) TestReceive() {
 	s.fakeSQS.On("ReceiveMessageWithContext", ctx, receiveInput, []request.Option(nil)).
 		Return(receiveOutput, nil).
 		Once()
+	s.fakeSQS.On("ReceiveMessageWithContext", ctx, receiveInput, []request.Option(nil)).
+		Return(&sqs.ReceiveMessageOutput{}, nil)
 
 	payload := []byte(`{"vehicle_id": "C_123"}`)
 	attributes := map[string]string{
@@ -177,7 +179,7 @@ func (s *BackendTestSuite) TestReceive() {
 	ch := make(chan bool)
 	go func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeoutS, s.fakeConsumerCallback.Callback)
-		s.Error(err, "context canceled")
+		s.EqualError(err, "context canceled")
 		ch <- true
 		close(ch)
 	}()
@@ -219,7 +221,7 @@ func (s *BackendTestSuite) TestReceiveNoMessages() {
 	ch := make(chan bool)
 	go func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeoutS, s.fakeConsumerCallback.Callback)
-		s.Error(err, "context canceled")
+		s.EqualError(err, "context canceled")
 		ch <- true
 		close(ch)
 	}()
@@ -303,6 +305,34 @@ func (s *BackendTestSuite) TestPublishNonUTF8() {
 	s.fakeSNS.AssertExpectations(s.T())
 }
 
+func (s *BackendTestSuite) TestPublishFailure() {
+	ctx := context.Background()
+
+	msgTopic := "dev-myapp"
+	expectedTopic := s.backend.getSNSTopic(msgTopic)
+
+	attributes := map[string]*sns.MessageAttributeValue{
+		"foo": {
+			DataType:    aws.String("String"),
+			StringValue: aws.String("bar"),
+		},
+	}
+
+	expectedSnsInput := &sns.PublishInput{
+		TopicArn:          &expectedTopic,
+		Message:           aws.String(string(s.payload)),
+		MessageAttributes: attributes,
+	}
+
+	s.fakeSNS.On("PublishWithContext", ctx, expectedSnsInput, mock.Anything).
+		Return((*sns.PublishOutput)(nil), errors.New("failed"))
+
+	_, err := s.backend.Publish(ctx, s.message, s.payload, s.attributes, msgTopic)
+	s.EqualError(err, "Failed to publish message to SNS: failed")
+
+	s.fakeSNS.AssertExpectations(s.T())
+}
+
 func (s *BackendTestSuite) TestAck() {
 	ctx := context.Background()
 
@@ -357,7 +387,7 @@ func (s *BackendTestSuite) TestAckError() {
 		Return((*sqs.DeleteMessageOutput)(nil), errors.New("failed to ack"))
 
 	err := s.backend.AckMessage(ctx, AWSMetadata{ReceiptHandle: receiptHandle})
-	s.Error(err, "failed to ack")
+	s.EqualError(err, "failed to ack")
 
 	s.fakeSQS.AssertExpectations(s.T())
 }

@@ -6,13 +6,11 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver"
-
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 
 	"github.com/cloudchacho/hedwig-go"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/suite"
 )
 
 // FakeHedwigDataField is a fake data field for testing
@@ -24,11 +22,113 @@ func newFakeHedwigDataField() interface{} {
 	return new(FakeHedwigDataField)
 }
 
+func (s *EncoderTestSuite) TestFormatHumanUUID() {
+	testSchema := []byte(`{
+    "id": "https://hedwig.automatic.com/schema",
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "description": "Test Schema for Hedwig messages",
+    "schemas": {
+        "vehicle_created": {
+            "1.*": {
+				"type": "string",
+				"format": "human-uuid",
+				"x-version": "1.0"
+			}
+		}
+	}
+}`)
+	newString := func() interface{} { return new(string) }
+	encoder, err := NewEncoderFromBytes(testSchema, hedwig.DataFactoryRegistry{hedwig.DataRegistryKey{"vehicle_created", 1}: newString})
+	s.NoError(err)
+
+	data := json.RawMessage(`"6cac5588-24cc-4b4f-bbf9-7dc0ce93f96e"`)
+
+	decoded, err := encoder.DecodeData(
+		hedwig.MetaAttributes{Schema: "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0"},
+		"vehicle_created",
+		semver.MustParse("1.0"),
+		data,
+	)
+	s.NoError(err)
+	s.Equal("6cac5588-24cc-4b4f-bbf9-7dc0ce93f96e", *decoded.(*string))
+
+	data = json.RawMessage(`"abcd"`)
+	_, err = encoder.DecodeData(
+		hedwig.MetaAttributes{Schema: "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0"},
+		"vehicle_created",
+		semver.MustParse("1.0"),
+		data,
+	)
+	s.Error(err)
+
+	data = json.RawMessage(`"yyyyyyyy-tttt-416a-92ed-420e62b33eb5"`)
+	_, err = encoder.DecodeData(
+		hedwig.MetaAttributes{Schema: "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0"},
+		"vehicle_created",
+		semver.MustParse("1.0"),
+		data,
+	)
+	s.Error(err)
+}
+
+func (s *EncoderTestSuite) TestInvalidXVersion() {
+	testSchema := []byte(`{
+    "id": "https://hedwig.automatic.com/schema",
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "description": "Test Schema for Hedwig messages",
+    "schemas": {
+        "vehicle_created": {
+            "1.*": {
+				"type": "string"
+			}
+		}
+	}
+}`)
+	newString := func() interface{} { return new(string) }
+	_, err := NewEncoderFromBytes(testSchema, hedwig.DataFactoryRegistry{hedwig.DataRegistryKey{"vehicle_created", 1}: newString})
+	s.EqualError(err, "Missing x-version from schema definition")
+
+	testSchema = []byte(`{
+    "id": "https://hedwig.automatic.com/schema",
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "description": "Test Schema for Hedwig messages",
+    "schemas": {
+        "vehicle_created": {
+            "1.*": {
+				"type": "string",
+				"x-version": "foobar"
+			}
+		}
+	}
+}`)
+	_, err = NewEncoderFromBytes(testSchema, hedwig.DataFactoryRegistry{hedwig.DataRegistryKey{"vehicle_created", 1}: newString})
+	s.EqualError(err, "invalid value for x-version: foobar, must be semver")
+
+	testSchema = []byte(`{
+    "id": "https://hedwig.automatic.com/schema",
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "description": "Test Schema for Hedwig messages",
+    "schemas": {
+        "vehicle_created": {
+            "1.*": {
+				"type": "string",
+				"x-version": 1
+			}
+		}
+	}
+}`)
+	_, err = NewEncoderFromBytes(testSchema, hedwig.DataFactoryRegistry{hedwig.DataRegistryKey{"vehicle_created", 1}: newString})
+	s.Error(err)
+}
+
 func (s *EncoderTestSuite) TestVerifyKnownMinorVersion() {
 	err := s.encoder.VerifyKnownMinorVersion("vehicle_created", semver.MustParse("1.0"))
 	s.NoError(err)
 
 	err = s.encoder.VerifyKnownMinorVersion("vehicle_created", semver.MustParse("1.1"))
+	s.Error(err)
+
+	err = s.encoder.VerifyKnownMinorVersion("foobar", semver.MustParse("1.0"))
 	s.Error(err)
 }
 
@@ -148,10 +248,10 @@ func (s *EncoderTestSuite) TestExtractDataValidation() {
 		s.Run(name, func() {
 			badAttributes := map[string]string{}
 			for k, v := range attributes {
-				if test.badValue == "missing" {
-					continue
-				} else if k == test.field {
-					badAttributes[k] = test.badValue
+				if k == test.field {
+					if test.badValue != "missing" {
+						badAttributes[k] = test.badValue
+					}
 				} else {
 					badAttributes[k] = v
 				}
@@ -193,6 +293,18 @@ func (s *EncoderTestSuite) TestExtractDataContainerizedInvalid() {
 		"foo": "bar",
 	}
 	_, _, err := s.encoder.ExtractData(payload, attributes, false)
+	s.Error(err)
+}
+
+func (s *EncoderTestSuite) TestDecodeMessageType() {
+	schema := "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0"
+	messageType, version, err := s.encoder.DecodeMessageType(schema)
+	s.NoError(err)
+	s.Equal(messageType, "vehicle_created")
+	s.Equal(version, semver.MustParse("1.0"))
+
+	schema = "vehicle_created 1.0"
+	_, _, err = s.encoder.DecodeMessageType(schema)
 	s.Error(err)
 }
 
@@ -239,6 +351,86 @@ func (s *EncoderTestSuite) TestDecodeDataUnknownVersion() {
 		Headers:       map[string]string{"foo": "bar"},
 		ID:            "d70a641e-14ab-32e4-a790-459bd36de532",
 		Schema:        "https://hedwig.automatic.com/schema#/schemas/vehicle_created/2.0",
+		FormatVersion: semver.MustParse("1.0"),
+	}
+	_, err := s.encoder.DecodeData(metaAttrs, messageType, version, data)
+	s.Error(err)
+}
+
+func (s *EncoderTestSuite) TestDecodeDataInvalidSchema() {
+	data := json.RawMessage([]byte(`{"vehicle_id":"C_1234567890123456"}`))
+	messageType := "vehicle_created"
+	version := semver.MustParse("2.0")
+	metaAttrs := hedwig.MetaAttributes{
+		Timestamp:     time.Unix(1621550514, 0),
+		Publisher:     "myapp",
+		Headers:       map[string]string{"foo": "bar"},
+		ID:            "d70a641e-14ab-32e4-a790-459bd36de532",
+		Schema:        "vehicle_created/1.0",
+		FormatVersion: semver.MustParse("1.0"),
+	}
+	_, err := s.encoder.DecodeData(metaAttrs, messageType, version, data)
+	s.Error(err)
+}
+
+func (s *EncoderTestSuite) TestDecodeDataInvalidDataType() {
+	data := []byte(`{"vehicle_id":"C_1234567890123456"}`)
+	messageType := "vehicle_created"
+	version := semver.MustParse("2.0")
+	metaAttrs := hedwig.MetaAttributes{
+		Timestamp:     time.Unix(1621550514, 0),
+		Publisher:     "myapp",
+		Headers:       map[string]string{"foo": "bar"},
+		ID:            "d70a641e-14ab-32e4-a790-459bd36de532",
+		Schema:        "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
+		FormatVersion: semver.MustParse("1.0"),
+	}
+	_, err := s.encoder.DecodeData(metaAttrs, messageType, version, data)
+	s.Error(err)
+}
+
+func (s *EncoderTestSuite) TestDecodeDataInvalidData() {
+	data := []byte(`{}`)
+	messageType := "vehicle_created"
+	version := semver.MustParse("2.0")
+	metaAttrs := hedwig.MetaAttributes{
+		Timestamp:     time.Unix(1621550514, 0),
+		Publisher:     "myapp",
+		Headers:       map[string]string{"foo": "bar"},
+		ID:            "d70a641e-14ab-32e4-a790-459bd36de532",
+		Schema:        "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
+		FormatVersion: semver.MustParse("1.0"),
+	}
+	_, err := s.encoder.DecodeData(metaAttrs, messageType, version, data)
+	s.Error(err)
+}
+
+func (s *EncoderTestSuite) TestDecodeDataInvalidDataJSON() {
+	data := []byte(`{`)
+	messageType := "vehicle_created"
+	version := semver.MustParse("2.0")
+	metaAttrs := hedwig.MetaAttributes{
+		Timestamp:     time.Unix(1621550514, 0),
+		Publisher:     "myapp",
+		Headers:       map[string]string{"foo": "bar"},
+		ID:            "d70a641e-14ab-32e4-a790-459bd36de532",
+		Schema:        "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
+		FormatVersion: semver.MustParse("1.0"),
+	}
+	_, err := s.encoder.DecodeData(metaAttrs, messageType, version, data)
+	s.Error(err)
+}
+
+func (s *EncoderTestSuite) TestDecodeDataInvalidDataFactory() {
+	data := []byte(`{`)
+	messageType := "trip_created"
+	version := semver.MustParse("2.0")
+	metaAttrs := hedwig.MetaAttributes{
+		Timestamp:     time.Unix(1621550514, 0),
+		Publisher:     "myapp",
+		Headers:       map[string]string{"foo": "bar"},
+		ID:            "d70a641e-14ab-32e4-a790-459bd36de532",
+		Schema:        "https://hedwig.automatic.com/schema#/schemas/trip_created/1.0",
 		FormatVersion: semver.MustParse("1.0"),
 	}
 	_, err := s.encoder.DecodeData(metaAttrs, messageType, version, data)

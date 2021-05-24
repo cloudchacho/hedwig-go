@@ -14,8 +14,6 @@ import (
 )
 
 func (s *PublisherTestSuite) TestPublish() {
-	assertions := s.Assertions
-
 	ctx := context.Background()
 
 	data := FakeHedwigDataField{
@@ -36,15 +34,13 @@ func (s *PublisherTestSuite) TestPublish() {
 		Return(messageId, nil)
 
 	receivedMessageId, err := s.publisher.Publish(ctx, message)
-	assertions.Nil(err)
-	assertions.Equal(messageId, receivedMessageId)
+	s.Nil(err)
+	s.Equal(messageId, receivedMessageId)
 
 	s.backend.AssertExpectations(s.T())
 }
 
 func (s *PublisherTestSuite) TestPublishTopicError() {
-	assertions := s.Assertions
-
 	ctx := context.Background()
 
 	data := FakeHedwigDataField{
@@ -60,7 +56,7 @@ func (s *PublisherTestSuite) TestPublishTopicError() {
 		Return(payload, headers, nil)
 
 	_, err = s.publisher.Publish(ctx, message)
-	assertions.Error(err, "Message route is not defined for message")
+	s.EqualError(err, "Message route is not defined for message")
 
 	s.backend.AssertExpectations(s.T())
 }

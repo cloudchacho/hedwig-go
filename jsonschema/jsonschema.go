@@ -85,7 +85,7 @@ func xVersionsExt() jsonschema.Extension {
 			if xVersionStr, ok := xVersion.(string); ok {
 				version, err := semver.NewVersion(xVersionStr)
 				if err != nil {
-					return nil, err
+					return nil, errors.Errorf("invalid value for x-version: %s, must be semver", xVersion)
 				}
 				return version, err
 			}
@@ -101,17 +101,6 @@ func xVersionsExt() jsonschema.Extension {
 		Compile:  compile,
 		Validate: validate,
 	}
-}
-
-// Convert full schema name to schema key to look up in schema.json
-//   hedwig.automatic.com/schema#/schemas/vehicle_created/1.0 => vehicle_created/1.0
-func schemaKeyFromSchema(schema string) (string, error) {
-	m := schemaKeyRegex.FindStringSubmatch(schema)
-	if len(m) == 0 {
-		return "", errors.New("No schema key found")
-	}
-
-	return fmt.Sprintf("%s/%s.*", m[1], m[2]), nil
 }
 
 // NewEncoderFromBytes from an byte encoded schema file
@@ -147,11 +136,6 @@ func NewEncoderFromBytes(schemaFile []byte, dataRegistry hedwig.DataFactoryRegis
 			compiler.Extensions["x-version"] = xVersionsExt()
 
 			schemaURL := fmt.Sprintf("%s/schemas/%s/%s", encoder.schemaID, schemaName, version)
-			schemaJSONDecoded := map[string]interface{}{}
-			err = json.Unmarshal(schemaByte, &schemaJSONDecoded)
-			if err != nil {
-				return nil, err
-			}
 
 			err = compiler.AddResource(schemaURL, strings.NewReader(string(schemaByte)))
 			if err != nil {
@@ -294,12 +278,13 @@ func (me *messageEncoder) EncodeMessageType(messageType string, version *semver.
 func (me *messageEncoder) DecodeMessageType(schema string) (string, *semver.Version, error) {
 	m := schemaKeyRegex.FindStringSubmatch(schema)
 	if len(m) == 0 {
-		return "", nil, errors.New("No schema key found")
+		return "", nil, errors.Errorf("invalid schema: '%s' doesn't match valid regex", schema)
 	}
 
 	versionStr := fmt.Sprintf("%s.%s", m[2], m[3])
 	version, err := semver.NewVersion(versionStr)
 	if err != nil {
+		// would never happen
 		return "", nil, errors.Errorf("unable to parse as version: %s", versionStr)
 	}
 	return m[1], version, nil
@@ -322,6 +307,7 @@ func (me *messageEncoder) ExtractData(messagePayload []byte, attributes map[stri
 		container := messageDeserializationContainer{}
 		err = json.Unmarshal(messagePayload, &container)
 		if err != nil {
+			// would never happen
 			return metaAttrs, nil, err
 		}
 		metaAttrs.Timestamp = time.Time(container.Metadata.Timestamp)
