@@ -13,13 +13,13 @@ import (
 	"github.com/cloudchacho/hedwig-go"
 )
 
-// FakeHedwigDataField is a fake data field for testing
-type FakeHedwigDataField struct {
+// fakeHedwigDataField is a fake data field for testing
+type fakeHedwigDataField struct {
 	VehicleID string `json:"vehicle_id"`
 }
 
 func newFakeHedwigDataField() interface{} {
-	return new(FakeHedwigDataField)
+	return new(fakeHedwigDataField)
 }
 
 func (s *EncoderTestSuite) TestFormatHumanUUID() {
@@ -138,7 +138,7 @@ func (s *EncoderTestSuite) TestEncodeMessageType() {
 }
 
 func (s *EncoderTestSuite) TestEncodePayload() {
-	data := FakeHedwigDataField{VehicleID: "C_123"}
+	data := fakeHedwigDataField{VehicleID: "C_123"}
 	metaAttrs := hedwig.MetaAttributes{
 		Timestamp:     time.Unix(1621550514, 0),
 		Publisher:     "myapp",
@@ -161,7 +161,7 @@ func (s *EncoderTestSuite) TestEncodePayload() {
 }
 
 func (s *EncoderTestSuite) TestEncodePayloadContainerized() {
-	data := FakeHedwigDataField{VehicleID: "C_123"}
+	data := fakeHedwigDataField{VehicleID: "C_123"}
 	metaAttrs := hedwig.MetaAttributes{
 		Timestamp:     time.Unix(1621550514, 0),
 		Publisher:     "myapp",
@@ -321,7 +321,7 @@ func (s *EncoderTestSuite) TestDecodeData() {
 	}
 	decodedData, err := s.encoder.DecodeData(metaAttrs, messageType, version, data)
 	s.NoError(err)
-	s.Equal(decodedData, &FakeHedwigDataField{VehicleID: "C_1234567890123456"})
+	s.Equal(decodedData, &fakeHedwigDataField{VehicleID: "C_1234567890123456"})
 }
 
 func (s *EncoderTestSuite) TestDecodeDataUnknownType() {

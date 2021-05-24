@@ -87,7 +87,7 @@ func (s *PublisherTestSuite) TestNew() {
 type PublisherTestSuite struct {
 	suite.Suite
 	publisher *Publisher
-	backend   *FakeBackend
+	backend   *fakeBackend
 	validator *fakeValidator
 	callback  *fakeCallback
 	settings  *Settings
@@ -105,7 +105,7 @@ func (s *PublisherTestSuite) SetupTest() {
 			}: "dev-user-created-v1",
 		},
 	}
-	backend := &FakeBackend{}
+	backend := &fakeBackend{}
 	validator := &fakeValidator{}
 
 	s.publisher = NewPublisher(settings, backend, validator).(*Publisher)

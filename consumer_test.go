@@ -62,26 +62,26 @@ func (fc *fakeCallback) Callback(ctx context.Context, m *Message) error {
 	return args.Error(0)
 }
 
-type FakeBackend struct {
+type fakeBackend struct {
 	mock.Mock
 }
 
-func (b *FakeBackend) Receive(ctx context.Context, numMessages uint32, visibilityTimeoutS uint32, callback ConsumerCallback) error {
+func (b *fakeBackend) Receive(ctx context.Context, numMessages uint32, visibilityTimeoutS uint32, callback ConsumerCallback) error {
 	args := b.Called(ctx, numMessages, visibilityTimeoutS, callback)
 	return args.Error(0)
 }
 
-func (b *FakeBackend) NackMessage(ctx context.Context, providerMetadata interface{}) error {
+func (b *fakeBackend) NackMessage(ctx context.Context, providerMetadata interface{}) error {
 	args := b.Called(ctx, providerMetadata)
 	return args.Error(0)
 }
 
-func (b *FakeBackend) AckMessage(ctx context.Context, providerMetadata interface{}) error {
+func (b *fakeBackend) AckMessage(ctx context.Context, providerMetadata interface{}) error {
 	args := b.Called(ctx, providerMetadata)
 	return args.Error(0)
 }
 
-func (b *FakeBackend) Publish(ctx context.Context, message *Message, payload []byte, attributes map[string]string, topic string) (string, error) {
+func (b *fakeBackend) Publish(ctx context.Context, message *Message, payload []byte, attributes map[string]string, topic string) (string, error) {
 	args := b.Called(ctx, message, payload, attributes, topic)
 	return args.String(0), args.Error(1)
 }
@@ -243,7 +243,7 @@ func (s *ConsumerTestSuite) TestNew() {
 type ConsumerTestSuite struct {
 	suite.Suite
 	consumer  *queueConsumer
-	backend   *FakeBackend
+	backend   *fakeBackend
 	validator *fakeValidator
 	callback  *fakeCallback
 	logger    *fakeLogger
@@ -260,7 +260,7 @@ func (s *ConsumerTestSuite) SetupTest() {
 		CallbackRegistry: &CallbackRegistry{CallbackKey{"user-created", 1}: callback.Callback},
 		GetLogger:        func(_ context.Context) ILogger { return logger },
 	}
-	backend := &FakeBackend{}
+	backend := &fakeBackend{}
 	validator := &fakeValidator{}
 
 	s.consumer = NewQueueConsumer(settings, backend, validator).(*queueConsumer)

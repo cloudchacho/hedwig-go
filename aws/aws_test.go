@@ -85,39 +85,39 @@ func (f *fakeValidator) Deserialize(messagePayload []byte, attributes map[string
 	return args.Get(0).(*hedwig.Message), args.Error(1)
 }
 
-type FakeSQS struct {
+type fakeSQS struct {
 	mock.Mock
 	// fake interface here
 	sqsiface.SQSAPI
 }
 
-func (fs *FakeSQS) SendMessageWithContext(ctx aws.Context, in *sqs.SendMessageInput, opts ...request.Option) (*sqs.SendMessageOutput, error) {
+func (fs *fakeSQS) SendMessageWithContext(ctx aws.Context, in *sqs.SendMessageInput, opts ...request.Option) (*sqs.SendMessageOutput, error) {
 	args := fs.Called(ctx, in, opts)
 	return args.Get(0).(*sqs.SendMessageOutput), args.Error(1)
 }
 
-func (fs *FakeSQS) GetQueueUrlWithContext(ctx aws.Context, in *sqs.GetQueueUrlInput, opts ...request.Option) (*sqs.GetQueueUrlOutput, error) {
+func (fs *fakeSQS) GetQueueUrlWithContext(ctx aws.Context, in *sqs.GetQueueUrlInput, opts ...request.Option) (*sqs.GetQueueUrlOutput, error) {
 	args := fs.Called(ctx, in, opts)
 	return args.Get(0).(*sqs.GetQueueUrlOutput), args.Error(1)
 }
 
-func (fs *FakeSQS) ReceiveMessageWithContext(ctx aws.Context, in *sqs.ReceiveMessageInput, opts ...request.Option) (*sqs.ReceiveMessageOutput, error) {
+func (fs *fakeSQS) ReceiveMessageWithContext(ctx aws.Context, in *sqs.ReceiveMessageInput, opts ...request.Option) (*sqs.ReceiveMessageOutput, error) {
 	args := fs.Called(ctx, in, opts)
 	return args.Get(0).(*sqs.ReceiveMessageOutput), args.Error(1)
 }
 
-func (fs *FakeSQS) DeleteMessageWithContext(ctx aws.Context, in *sqs.DeleteMessageInput, opts ...request.Option) (*sqs.DeleteMessageOutput, error) {
+func (fs *fakeSQS) DeleteMessageWithContext(ctx aws.Context, in *sqs.DeleteMessageInput, opts ...request.Option) (*sqs.DeleteMessageOutput, error) {
 	args := fs.Called(ctx, in, opts)
 	return args.Get(0).(*sqs.DeleteMessageOutput), args.Error(1)
 }
 
-type FakeSNS struct {
+type fakeSNS struct {
 	mock.Mock
 	// fake interface here
 	snsiface.SNSAPI
 }
 
-func (fs *FakeSNS) PublishWithContext(ctx aws.Context, in *sns.PublishInput, opts ...request.Option) (*sns.PublishOutput, error) {
+func (fs *fakeSNS) PublishWithContext(ctx aws.Context, in *sns.PublishInput, opts ...request.Option) (*sns.PublishOutput, error) {
 	args := fs.Called(ctx, in)
 	return args.Get(0).(*sns.PublishOutput), args.Error(1)
 }
@@ -700,8 +700,8 @@ type BackendTestSuite struct {
 	suite.Suite
 	backend              *awsBackend
 	settings             *hedwig.Settings
-	fakeSQS              *FakeSQS
-	fakeSNS              *FakeSNS
+	fakeSQS              *fakeSQS
+	fakeSNS              *fakeSNS
 	message              *hedwig.Message
 	payload              []byte
 	attributes           map[string]string
@@ -727,8 +727,8 @@ func (s *BackendTestSuite) SetupTest() {
 		},
 		ShutdownTimeout: time.Second * 10,
 	}
-	fakeSQS := &FakeSQS{}
-	fakeSNS := &FakeSNS{}
+	fakeSQS := &fakeSQS{}
+	fakeSNS := &fakeSNS{}
 	fakeMessageCallback := &fakeConsumerCallback{}
 	message, err := hedwig.NewMessage(settings, "user-created", "1.0", map[string]string{"foo": "bar"}, &fakeHedwigDataField{})
 	require.NoError(s.T(), err)

@@ -328,7 +328,7 @@ func (s *ValidatorTestSuite) TestNew() {
 type ValidatorTestSuite struct {
 	suite.Suite
 	validator IMessageValidator
-	backend   *FakeBackend
+	backend   *fakeBackend
 	callback  *fakeCallback
 	settings  *Settings
 	encoder   *fakeEncoder
@@ -346,7 +346,7 @@ func (s *ValidatorTestSuite) SetupTest() {
 			}: "dev-user-created-v1",
 		},
 	}
-	backend := &FakeBackend{}
+	backend := &fakeBackend{}
 	encoder := &fakeEncoder{}
 
 	s.validator = NewMessageValidator(settings, encoder)
