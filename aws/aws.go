@@ -151,13 +151,19 @@ func (a *awsBackend) Receive(ctx context.Context, numMessages uint32, visibility
 						for k, v := range queueMessage.MessageAttributes {
 							attributes[k] = *v.StringValue
 						}
-						firstReceiveTimestamp, err := strconv.Atoi(*queueMessage.Attributes[sqs.MessageSystemAttributeNameApproximateFirstReceiveTimestamp])
-						if err != nil {
+						var firstReceiveTime time.Time
+						if firstReceiveTimestamp, err := strconv.Atoi(*queueMessage.Attributes[sqs.MessageSystemAttributeNameApproximateFirstReceiveTimestamp]); err != nil {
 							firstReceiveTimestamp = 0
+							firstReceiveTime = time.Time{}
+						} else {
+							firstReceiveTime = time.Unix(0, int64(time.Duration(firstReceiveTimestamp)*time.Millisecond)).UTC()
 						}
-						sentTimestamp, err := strconv.Atoi(*queueMessage.Attributes[sqs.MessageSystemAttributeNameSentTimestamp])
-						if err != nil {
+						var sentTime time.Time
+						if sentTimestamp, err := strconv.Atoi(*queueMessage.Attributes[sqs.MessageSystemAttributeNameSentTimestamp]); err != nil {
 							sentTimestamp = 0
+							sentTime = time.Time{}
+						} else {
+							sentTime = time.Unix(0, int64(time.Duration(sentTimestamp)*time.Millisecond)).UTC()
 						}
 						receiveCount, err := strconv.Atoi(*queueMessage.Attributes[sqs.MessageSystemAttributeNameApproximateReceiveCount])
 						if err != nil {
@@ -165,8 +171,8 @@ func (a *awsBackend) Receive(ctx context.Context, numMessages uint32, visibility
 						}
 						metadata := AWSMetadata{
 							*queueMessage.ReceiptHandle,
-							time.Unix(int64(firstReceiveTimestamp), 0),
-							time.Unix(int64(sentTimestamp), 0),
+							firstReceiveTime,
+							sentTime,
 							receiveCount,
 						}
 						payload := []byte(*queueMessage.Body)

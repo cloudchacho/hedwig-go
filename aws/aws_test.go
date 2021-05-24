@@ -109,8 +109,10 @@ func (s *BackendTestSuite) TestReceive() {
 		MaxNumberOfMessages:   aws.Int64(int64(numMessages)),
 		WaitTimeSeconds:       aws.Int64(sqsWaitTimeoutSeconds),
 	}
-	firstReceiveTime := time.Unix(1621629351, 0)
-	sentTime := time.Unix(1621629352, 0)
+	firstReceiveTime, err := time.Parse(time.RFC3339Nano, "2011-01-19T22:15:10.456000000-07:00")
+	s.Require().NoError(err)
+	sentTime, err := time.Parse(time.RFC3339Nano, "2011-01-19T22:15:10.123000000-07:00")
+	s.Require().NoError(err)
 	receiveCount := 1
 	body := `{"vehicle_id": "C_123"}`
 	messageId := "123"
@@ -120,8 +122,8 @@ func (s *BackendTestSuite) TestReceive() {
 			"foo": &sqs.MessageAttributeValue{StringValue: aws.String("bar")},
 		},
 		Attributes: map[string]*string{
-			sqs.MessageSystemAttributeNameApproximateFirstReceiveTimestamp: aws.String(strconv.Itoa(int(firstReceiveTime.Unix()))),
-			sqs.MessageSystemAttributeNameSentTimestamp:                    aws.String(strconv.Itoa(int(sentTime.Unix()))),
+			sqs.MessageSystemAttributeNameApproximateFirstReceiveTimestamp: aws.String("1295500510456"),
+			sqs.MessageSystemAttributeNameSentTimestamp:                    aws.String("1295500510123"),
 			sqs.MessageSystemAttributeNameApproximateReceiveCount:          aws.String(strconv.Itoa(int(receiveCount))),
 		},
 		Body:      aws.String(body),
@@ -136,8 +138,8 @@ func (s *BackendTestSuite) TestReceive() {
 			"hedwig_encoding": &sqs.MessageAttributeValue{StringValue: aws.String("base64")},
 		},
 		Attributes: map[string]*string{
-			sqs.MessageSystemAttributeNameApproximateFirstReceiveTimestamp: aws.String(strconv.Itoa(int(firstReceiveTime.Unix()))),
-			sqs.MessageSystemAttributeNameSentTimestamp:                    aws.String(strconv.Itoa(int(sentTime.Unix()))),
+			sqs.MessageSystemAttributeNameApproximateFirstReceiveTimestamp: aws.String("1295500510456"),
+			sqs.MessageSystemAttributeNameSentTimestamp:                    aws.String("1295500510123"),
 			sqs.MessageSystemAttributeNameApproximateReceiveCount:          aws.String(strconv.Itoa(int(receiveCount))),
 		},
 		Body:      aws.String(body2),
@@ -158,8 +160,8 @@ func (s *BackendTestSuite) TestReceive() {
 	}
 	providerMetadata := AWSMetadata{
 		ReceiptHandle:    receiptHandle,
-		FirstReceiveTime: firstReceiveTime,
-		SentTime:         sentTime,
+		FirstReceiveTime: firstReceiveTime.UTC(),
+		SentTime:         sentTime.UTC(),
 		ReceiveCount:     receiveCount,
 	}
 	s.fakeConsumerCallback.On("Callback", ctx, payload, attributes, providerMetadata).
@@ -217,6 +219,84 @@ func (s *BackendTestSuite) TestReceiveNoMessages() {
 	}
 	s.fakeSQS.On("ReceiveMessageWithContext", ctx, receiveInput, []request.Option(nil)).
 		Return(&sqs.ReceiveMessageOutput{}, nil)
+
+	ch := make(chan bool)
+	go func() {
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeoutS, s.fakeConsumerCallback.Callback)
+		s.EqualError(err, "context canceled")
+		ch <- true
+		close(ch)
+	}()
+	time.Sleep(time.Millisecond * 1)
+	cancel()
+
+	// wait for co-routine to finish
+	<-ch
+
+	s.fakeSQS.AssertExpectations(s.T())
+	s.fakeConsumerCallback.AssertExpectations(s.T())
+}
+
+func (s *BackendTestSuite) TestReceiveMissingAttributes() {
+	ctx, cancel := context.WithCancel(context.Background())
+	numMessages := uint32(10)
+	visibilityTimeoutS := uint32(10)
+	queueName := "HEDWIG-DEV-MYAPP"
+	queueURL := "https://sqs.us-east-1.amazonaws.com/686176732873/" + queueName
+	queueInput := &sqs.GetQueueUrlInput{
+		QueueName: &queueName,
+	}
+	output := &sqs.GetQueueUrlOutput{
+		QueueUrl: &queueURL,
+	}
+	s.fakeSQS.On("GetQueueUrlWithContext", ctx, queueInput, mock.Anything).Return(output, nil)
+
+	receiveInput := &sqs.ReceiveMessageInput{
+		QueueUrl:              aws.String(queueURL),
+		AttributeNames:        []*string{aws.String(sqs.QueueAttributeNameAll)},
+		MessageAttributeNames: []*string{aws.String(sqs.QueueAttributeNameAll)},
+		VisibilityTimeout:     aws.Int64(int64(visibilityTimeoutS)),
+		MaxNumberOfMessages:   aws.Int64(int64(numMessages)),
+		WaitTimeSeconds:       aws.Int64(sqsWaitTimeoutSeconds),
+	}
+	receiptHandle := "123"
+	body := `{"vehicle_id": "C_123"}`
+	messageId := "123"
+	sqsMessage := sqs.Message{
+		ReceiptHandle: aws.String(receiptHandle),
+		MessageAttributes: map[string]*sqs.MessageAttributeValue{
+			"foo": &sqs.MessageAttributeValue{StringValue: aws.String("bar")},
+		},
+		Attributes: map[string]*string{
+			sqs.MessageSystemAttributeNameApproximateFirstReceiveTimestamp: aws.String(""),
+			sqs.MessageSystemAttributeNameSentTimestamp:                    aws.String(""),
+			sqs.MessageSystemAttributeNameApproximateReceiveCount:          aws.String(""),
+		},
+		Body:      aws.String(body),
+		MessageId: aws.String(messageId),
+	}
+	receiveOutput := &sqs.ReceiveMessageOutput{
+		Messages: []*sqs.Message{&sqsMessage},
+	}
+	s.fakeSQS.On("ReceiveMessageWithContext", ctx, receiveInput, []request.Option(nil)).
+		Return(receiveOutput, nil).
+		Once()
+	s.fakeSQS.On("ReceiveMessageWithContext", ctx, receiveInput, []request.Option(nil)).
+		Return(&sqs.ReceiveMessageOutput{}, nil)
+
+	payload := []byte(`{"vehicle_id": "C_123"}`)
+	attributes := map[string]string{
+		"foo": "bar",
+	}
+	providerMetadata := AWSMetadata{
+		ReceiptHandle:    receiptHandle,
+		FirstReceiveTime: time.Time{},
+		SentTime:         time.Time{},
+		ReceiveCount:     -1,
+	}
+	s.fakeConsumerCallback.On("Callback", ctx, payload, attributes, providerMetadata).
+		Return().
+		Once()
 
 	ch := make(chan bool)
 	go func() {
