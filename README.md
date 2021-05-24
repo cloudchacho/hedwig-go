@@ -1,10 +1,9 @@
 # Hedwig Library for Go
 
-[![Build Status](https://github.com/cloudchacho/hedwig-go/checks)](https://github.com/github/cloudchacho/hedwig-go/workflows/gotest.yml/badge.svg)
+[![Build Status](https://github.com/cloudchacho/hedwig-go/checks)](https://github.com/cloudchacho/hedwig-go/actions/workflows/gotest.yml/badge.svg)
 [![Go Report Card](https://goreportcard.com/badge/github.com/cloudchacho/hedwig-go)](https://goreportcard.com/report/github.com/cloudchacho/hedwig-go)
 [![Godoc](https://godoc.org/github.com/cloudchacho/hedwig-go?status.svg)](http://godoc.org/github.com/cloudchacho/hedwig-go)
-[![Coverage](https://img.shields.io/coveralls/cloudchacho/hedwig-go/master.svg?style=flat-square)](https://coveralls.io/r/cloudchacho/hedwig-go)
-
+[![codecov](https://codecov.io/gh/cloudchacho/hedwig-go/branch/main/graph/badge.svg?token=H6VWFF04JD)](https://codecov.io/gh/cloudchacho/hedwig-go)
 
 Hedwig is a inter-service communication bus that works on AWS SQS/SNS, while keeping things pretty simple and
 straight forward. It uses [JSON schema](http://json-schema.org/) [draft v4](http://json-schema.org/specification-links.html#draft-4) for schema validation so all incoming
