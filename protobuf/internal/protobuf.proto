@@ -1,0 +1,37 @@
+syntax = "proto2";
+
+import "cloudchacho/hedwig/protobuf/options.proto";
+
+option go_package = "github.com/cloudchacho/hedwig-go/protobuf/internal";
+
+message TripCreatedV1 {
+  option (hedwig.message_options).major_version = 1;
+  option (hedwig.message_options).minor_version = 0;
+  option (hedwig.message_options).message_type = "trip_created";
+
+  required string vehicle_id = 1;
+  required string user_id = 2;
+}
+
+message TripCreatedV2 {
+  option (hedwig.message_options).major_version = 2;
+  option (hedwig.message_options).message_type = "trip_created";
+
+  required string vehicle_id = 1;
+  required string vin = 2;
+}
+
+message DeviceCreatedV1 {
+  option (hedwig.message_options).major_version = 1;
+  option (hedwig.message_options).message_type = "device_created";
+
+  required string device_id = 1;
+  required string user_id = 2;
+}
+
+message VehicleCreatedV1 {
+  option (hedwig.message_options).major_version = 1;
+  option (hedwig.message_options).message_type = "vehicle_created";
+
+  required string vehicle_id = 1;
+}

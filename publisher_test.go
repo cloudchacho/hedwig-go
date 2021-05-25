@@ -98,10 +98,10 @@ func (s *PublisherTestSuite) SetupTest() {
 		AWSRegion:    "us-east-1",
 		AWSAccountID: "1234567890",
 		QueueName:    "dev-myapp",
-		MessageRouting: map[MessageRouteKey]string{
+		MessageRouting: map[MessageTypeMajorVersion]string{
 			{
-				MessageType:         "user-created",
-				MessageMajorVersion: 1,
+				MessageType:  "user-created",
+				MajorVersion: 1,
 			}: "dev-user-created-v1",
 		},
 	}

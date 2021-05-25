@@ -22,14 +22,18 @@ import (
 	"github.com/cloudchacho/hedwig-go"
 )
 
-var schemaKeyRegex *regexp.Regexp
+var schemaRegex *regexp.Regexp
+
+var schemaMajorVersionRegexp *regexp.Regexp
 
 const xVersionKey = "x-version"
 
 var containerSchema *jsonschema.Schema
 
 func init() {
-	schemaKeyRegex = regexp.MustCompile(`([^/]+)/(\d+)\.(\d+)$`)
+	schemaRegex = regexp.MustCompile(`([^/]+)/(\d+)\.(\d+)$`)
+
+	schemaMajorVersionRegexp = regexp.MustCompile(`^(\d+)\.\*$`)
 
 	addJSONSchemaCustomFormats()
 
@@ -107,7 +111,7 @@ func xVersionsExt() jsonschema.Extension {
 // NewEncoderFromBytes from an byte encoded schema file
 func NewEncoderFromBytes(schemaFile []byte, dataRegistry hedwig.DataFactoryRegistry) (hedwig.IEncoder, error) {
 	encoder := messageEncoder{
-		compiledSchemaMap: make(map[string]*jsonschema.Schema),
+		compiledSchemaMap: make(map[hedwig.MessageTypeMajorVersion]*jsonschema.Schema),
 		dataRegistry:      dataRegistry,
 	}
 
@@ -120,10 +124,28 @@ func NewEncoderFromBytes(schemaFile []byte, dataRegistry hedwig.DataFactoryRegis
 	// Extract base url from schema id
 	encoder.schemaID = parsedSchema["id"].(string)
 
+	msgTypesFound := map[hedwig.MessageTypeMajorVersion]bool{}
+	for messageMajor := range dataRegistry {
+		msgTypesFound[messageMajor] = false
+	}
+
 	schemaMap := parsedSchema["schemas"].(map[string]interface{})
 	for schemaName, schemaVersionObj := range schemaMap {
 		schemaVersionMap := schemaVersionObj.(map[string]interface{})
 		for version, schema := range schemaVersionMap {
+			matches := schemaMajorVersionRegexp.FindStringSubmatch(version)
+			if matches == nil {
+				return nil, errors.Errorf("invalid version %s for %s", version, schemaName)
+			}
+
+			majorVersionSigned, err := strconv.Atoi(matches[1])
+			if err != nil {
+				// should never happen, regex already validated
+				return nil, err
+			}
+
+			majorVersion := uint(majorVersionSigned)
+
 			schemaByte, err := json.Marshal(schema)
 			if err != nil {
 				// should never happen, schema was already unmarshaled once
@@ -156,12 +178,27 @@ func NewEncoderFromBytes(schemaFile []byte, dataRegistry hedwig.DataFactoryRegis
 				return nil, err
 			}
 
-			if _, ok := schema.Extensions[xVersionKey]; !ok {
-				return nil, errors.New("Missing x-version from schema definition")
+			if value, ok := schema.Extensions[xVersionKey]; !ok {
+				return nil, errors.Errorf("Missing x-version from schema definition for %s", schemaName)
+			} else {
+				xVersion := value.(*semver.Version)
+				if xVersion.Major() != int64(majorVersion) {
+					return nil, errors.Errorf("Invalid x-version: %d.%d for: %s/%s",
+						xVersion.Major(), xVersion.Minor(), schemaName, version,
+					)
+				}
 			}
 
-			schemaKey := fmt.Sprintf("%s/%s", schemaName, version)
+			schemaKey := hedwig.MessageTypeMajorVersion{schemaName, majorVersion}
 			encoder.compiledSchemaMap[schemaKey] = schema
+
+			msgTypesFound[schemaKey] = true
+		}
+	}
+
+	for messageMajor, found := range msgTypesFound {
+		if !found {
+			return nil, errors.Errorf("Schema not found for message type %s, major version %d", messageMajor.MessageType, messageMajor.MajorVersion)
 		}
 	}
 
@@ -202,9 +239,7 @@ type messageDeserializationContainer struct {
 
 // messageEncoder is an implementation of hedwig.IEncoder
 type messageEncoder struct {
-	// Format: schemakey("schema name/schema major version") => schema
-	//   parking.created/3 => schema
-	compiledSchemaMap map[string]*jsonschema.Schema
+	compiledSchemaMap map[hedwig.MessageTypeMajorVersion]*jsonschema.Schema
 
 	dataRegistry hedwig.DataFactoryRegistry
 
@@ -215,10 +250,9 @@ func (me *messageEncoder) schemaRoot() string {
 	return me.schemaID
 }
 
-// EncodePayload encodes the message with appropriate format for transport over the wire
-func (me *messageEncoder) EncodePayload(data interface{}, useMessageTransport bool, metaAttrs hedwig.MetaAttributes) ([]byte, map[string]string, error) {
+// EncodeData encodes the message with appropriate format for transport over the wire
+func (me *messageEncoder) EncodeData(data interface{}, useMessageTransport bool, metaAttrs hedwig.MetaAttributes) ([]byte, error) {
 	var payload []byte
-	var msgAttrs map[string]string
 	var err error
 
 	if !useMessageTransport {
@@ -235,32 +269,21 @@ func (me *messageEncoder) EncodePayload(data interface{}, useMessageTransport bo
 		})
 		if err != nil {
 			// Unable to convert to JSON
-			return nil, nil, err
+			return nil, err
 		}
-		msgAttrs = metaAttrs.Headers
 	} else {
 		payload, err = json.Marshal(data)
 		if err != nil {
 			// Unable to convert to JSON
-			return nil, nil, err
-		}
-		msgAttrs = map[string]string{
-			"hedwig_format_version":    fmt.Sprintf("%d.%d", metaAttrs.FormatVersion.Major(), metaAttrs.FormatVersion.Minor()),
-			"hedwig_id":                metaAttrs.ID,
-			"hedwig_message_timestamp": fmt.Sprintf("%d", metaAttrs.Timestamp.Unix()),
-			"hedwig_publisher":         metaAttrs.Publisher,
-			"hedwig_schema":            metaAttrs.Schema,
-		}
-		for k, v := range metaAttrs.Headers {
-			msgAttrs[k] = v
+			return nil, err
 		}
 	}
-	return payload, msgAttrs, nil
+	return payload, nil
 }
 
 // VerifyKnownMinorVersion checks that message version is known to us
 func (me *messageEncoder) VerifyKnownMinorVersion(messageType string, version *semver.Version) error {
-	schemaKey := fmt.Sprintf("%s/%d.*", messageType, version.Major())
+	schemaKey := hedwig.MessageTypeMajorVersion{messageType, uint(version.Major())}
 
 	if schema, ok := me.compiledSchemaMap[schemaKey]; ok {
 		schemaVersion := schema.Extensions[xVersionKey].(*semver.Version)
@@ -270,7 +293,7 @@ func (me *messageEncoder) VerifyKnownMinorVersion(messageType string, version *s
 		}
 		return nil
 	}
-	return errors.Errorf("No schema found for %s", schemaKey)
+	return errors.Errorf("No schema found for %v", schemaKey)
 }
 
 // EncodeMessageType encodes the message type with appropriate format for transport over the wire
@@ -280,7 +303,11 @@ func (me *messageEncoder) EncodeMessageType(messageType string, version *semver.
 
 // DecodeMessageType decodes message type from meta attributes
 func (me *messageEncoder) DecodeMessageType(schema string) (string, *semver.Version, error) {
-	m := schemaKeyRegex.FindStringSubmatch(schema)
+	if !strings.HasPrefix(schema, me.schemaRoot()) {
+		return "", nil, errors.Errorf("Message schema must start with %s", me.schemaRoot())
+	}
+
+	m := schemaRegex.FindStringSubmatch(schema)
 	if len(m) == 0 {
 		return "", nil, errors.Errorf("invalid schema: '%s' doesn't match valid regex", schema)
 	}
@@ -294,108 +321,58 @@ func (me *messageEncoder) DecodeMessageType(schema string) (string, *semver.Vers
 	return m[1], version, nil
 }
 
-// ExtractData extracts data from the on-the-wire payload
-func (me *messageEncoder) ExtractData(messagePayload []byte, attributes map[string]string, useMessageTransport bool) (hedwig.MetaAttributes, interface{}, error) {
+// ExtractData extracts data from the on-the-wire payload when not using message transport
+func (me *messageEncoder) ExtractData(messagePayload []byte, attributes map[string]string) (hedwig.MetaAttributes, interface{}, error) {
 	metaAttrs := hedwig.MetaAttributes{}
 
 	if me.dataRegistry == nil {
 		return metaAttrs, nil, errors.New("dataRegistry must be set")
 	}
 
-	if !useMessageTransport {
-		err := containerSchema.Validate(bytes.NewReader(messagePayload))
-		if err != nil {
-			return metaAttrs, nil, errors.Wrap(err, "unable to verify containerized format")
-		}
-
-		container := messageDeserializationContainer{}
-		err = json.Unmarshal(messagePayload, &container)
-		if err != nil {
-			// would never happen
-			return metaAttrs, nil, err
-		}
-		metaAttrs.Timestamp = time.Time(container.Metadata.Timestamp)
-		metaAttrs.Publisher = container.Metadata.Publisher
-		metaAttrs.Headers = container.Metadata.Headers
-		metaAttrs.ID = container.ID
-		metaAttrs.Schema = container.Schema
-		metaAttrs.FormatVersion = container.FormatVersion
-
-		return metaAttrs, container.Data, nil
-	} else {
-		if value, ok := attributes["hedwig_format_version"]; !ok {
-			return metaAttrs, nil, errors.New("value not found for attribute: 'hedwig_format_version'")
-		} else {
-			if version, err := semver.NewVersion(value); err != nil {
-				return metaAttrs, nil, errors.Errorf("invalid value '%s' found for attribute: 'hedwig_format_version'", value)
-			} else {
-				metaAttrs.FormatVersion = version
-			}
-		}
-		if value, ok := attributes["hedwig_id"]; !ok {
-			return metaAttrs, nil, errors.New("value not found for attribute: 'hedwig_id'")
-		} else {
-			metaAttrs.ID = value
-		}
-		if value, ok := attributes["hedwig_message_timestamp"]; !ok {
-			return metaAttrs, nil, errors.New("value not found for attribute: 'hedwig_id'")
-		} else {
-			if timestamp, err := strconv.ParseInt(value, 10, 64); err != nil {
-				return metaAttrs, nil, errors.Errorf("invalid value '%s' found for attribute: 'hedwig_message_timestamp'", value)
-			} else {
-				unixTime := time.Unix(timestamp/1000.0, 0)
-				metaAttrs.Timestamp = unixTime
-			}
-		}
-		if value, ok := attributes["hedwig_publisher"]; !ok {
-			return metaAttrs, nil, errors.New("value not found for attribute: 'hedwig_publisher'")
-		} else {
-			metaAttrs.Publisher = value
-		}
-		if value, ok := attributes["hedwig_schema"]; !ok {
-			return metaAttrs, nil, errors.New("value not found for attribute: 'hedwig_schema'")
-		} else {
-			metaAttrs.Schema = value
-		}
-
-		if len(attributes) != 0 {
-			metaAttrs.Headers = map[string]string{}
-		}
-		for k, v := range attributes {
-			if !strings.HasPrefix(k, "hedwig_") {
-				metaAttrs.Headers[k] = v
-			}
-		}
-
-		return metaAttrs, json.RawMessage(messagePayload), nil
+	err := containerSchema.Validate(bytes.NewReader(messagePayload))
+	if err != nil {
+		return metaAttrs, nil, errors.Wrap(err, "unable to verify containerized format")
 	}
+
+	container := messageDeserializationContainer{}
+	err = json.Unmarshal(messagePayload, &container)
+	if err != nil {
+		// would never happen
+		return metaAttrs, nil, err
+	}
+	metaAttrs.Timestamp = time.Time(container.Metadata.Timestamp)
+	metaAttrs.Publisher = container.Metadata.Publisher
+	metaAttrs.Headers = container.Metadata.Headers
+	metaAttrs.ID = container.ID
+	metaAttrs.Schema = container.Schema
+	metaAttrs.FormatVersion = container.FormatVersion
+
+	return metaAttrs, container.Data, nil
 }
 
 // DecodeData validates and decodes data
-func (me *messageEncoder) DecodeData(metaAttrs hedwig.MetaAttributes, messageType string, version *semver.Version, data interface{}) (interface{}, error) {
-	if !strings.HasPrefix(metaAttrs.Schema, me.schemaRoot()) {
-		return nil, errors.Errorf("Message schema must start with %s", me.schemaRoot())
-	}
-
+func (me *messageEncoder) DecodeData(messageType string, version *semver.Version, data interface{}) (interface{}, error) {
 	var dataTyped []byte
 	var ok bool
 
-	if dataTyped, ok = data.(json.RawMessage); !ok {
-		return nil, errors.Errorf("Unexpected data of type: %s, expected json.RawMessage", reflect.TypeOf(data))
+	if dataTypedRawMessage, ok := data.(json.RawMessage); ok {
+		dataTyped = []byte(dataTypedRawMessage)
+	} else if dataTyped, ok = data.([]byte); !ok {
+		return nil, errors.Errorf("Unexpected data of type: %s, expected json.RawMessage or []byte", reflect.TypeOf(data))
 	}
 
-	schemaKey := fmt.Sprintf("%s/%d.*", messageType, version.Major())
+	schemaKey := hedwig.MessageTypeMajorVersion{messageType, uint(version.Major())}
 
 	var schema *jsonschema.Schema
 
 	if schema, ok = me.compiledSchemaMap[schemaKey]; !ok {
-		return nil, errors.Errorf("Unknown schema: %s", metaAttrs.Schema)
+		return nil, errors.Errorf("Unknown schema: %v", schemaKey)
 	}
 
 	var dataFactory hedwig.DataFactory
-	if dataFactory, ok = me.dataRegistry[hedwig.DataRegistryKey{
-		MessageType:         messageType,
-		MessageMajorVersion: int(version.Major()),
+	if dataFactory, ok = me.dataRegistry[hedwig.MessageTypeMajorVersion{
+		MessageType:  messageType,
+		MajorVersion: uint(version.Major()),
 	}]; !ok {
 		return nil, errors.Errorf("dataRegistry entry not found for: %s/%d", messageType, version.Major())
 	}

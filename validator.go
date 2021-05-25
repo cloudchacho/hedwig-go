@@ -2,6 +2,7 @@ package hedwig
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,8 +31,11 @@ type MetaAttributes struct {
 
 // IEncoder is responsible for encoding the message payload in appropriate format for over the wire transport
 type IEncoder interface {
-	// EncodePayload encodes the message with appropriate format for transport over the wire
-	EncodePayload(data interface{}, useMessageTransport bool, metaAttrs MetaAttributes) ([]byte, map[string]string, error)
+	// EncodeData encodes the message with appropriate format for transport over the wire
+	EncodeData(data interface{}, useMessageTransport bool, metaAttrs MetaAttributes) ([]byte, error)
+
+	// DecodeData validates and decodes data
+	DecodeData(messageType string, version *semver.Version, data interface{}) (interface{}, error)
 
 	// VerifyKnownMinorVersion checks that message version is known to us
 	VerifyKnownMinorVersion(messageType string, version *semver.Version) error
@@ -42,17 +46,78 @@ type IEncoder interface {
 	// DecodeMessageType decodes message type from meta attributes
 	DecodeMessageType(schema string) (string, *semver.Version, error)
 
-	// ExtractData extracts data from the on-the-wire payload
-	ExtractData(messagePayload []byte, attributes map[string]string, useMessageTransport bool) (MetaAttributes, interface{}, error)
-
-	// DecodeData validates and decodes data
-	DecodeData(metaAttrs MetaAttributes, messageType string, version *semver.Version, data interface{}) (interface{}, error)
+	// ExtractData extracts data from the on-the-wire payload when not using message transport
+	ExtractData(messagePayload []byte, attributes map[string]string) (MetaAttributes, interface{}, error)
 }
 
 type messageValidator struct {
 	encoder              IEncoder
 	currentFormatVersion *semver.Version
 	settings             *Settings
+}
+
+// decodeMetaAttributes decodes message transport attributes as MetaAttributes
+func (v *messageValidator) decodeMetaAttributes(attributes map[string]string) (MetaAttributes, error) {
+	metaAttrs := MetaAttributes{}
+	if value, ok := attributes["hedwig_format_version"]; !ok {
+		return metaAttrs, errors.New("value not found for attribute: 'hedwig_format_version'")
+	} else {
+		if version, err := semver.NewVersion(value); err != nil {
+			return metaAttrs, errors.Errorf("invalid value '%s' found for attribute: 'hedwig_format_version'", value)
+		} else {
+			metaAttrs.FormatVersion = version
+		}
+	}
+	if value, ok := attributes["hedwig_id"]; !ok {
+		return metaAttrs, errors.New("value not found for attribute: 'hedwig_id'")
+	} else {
+		metaAttrs.ID = value
+	}
+	if value, ok := attributes["hedwig_message_timestamp"]; !ok {
+		return metaAttrs, errors.New("value not found for attribute: 'hedwig_id'")
+	} else {
+		if timestamp, err := strconv.ParseInt(value, 10, 64); err != nil {
+			return metaAttrs, errors.Errorf("invalid value '%s' found for attribute: 'hedwig_message_timestamp'", value)
+		} else {
+			unixTime := time.Unix(0, timestamp*int64(time.Millisecond))
+			metaAttrs.Timestamp = unixTime
+		}
+	}
+	if value, ok := attributes["hedwig_publisher"]; !ok {
+		return metaAttrs, errors.New("value not found for attribute: 'hedwig_publisher'")
+	} else {
+		metaAttrs.Publisher = value
+	}
+	if value, ok := attributes["hedwig_schema"]; !ok {
+		return metaAttrs, errors.New("value not found for attribute: 'hedwig_schema'")
+	} else {
+		metaAttrs.Schema = value
+	}
+
+	if len(attributes) != 0 {
+		metaAttrs.Headers = map[string]string{}
+	}
+	for k, v := range attributes {
+		if !strings.HasPrefix(k, "hedwig_") {
+			metaAttrs.Headers[k] = v
+		}
+	}
+	return metaAttrs, nil
+}
+
+// encodeMetaAttributes decodes MetaAttributes as message transport attributes
+func (v *messageValidator) encodeMetaAttributes(metaAttrs MetaAttributes) map[string]string {
+	attributes := map[string]string{
+		"hedwig_format_version":    fmt.Sprintf("%d.%d", metaAttrs.FormatVersion.Major(), metaAttrs.FormatVersion.Minor()),
+		"hedwig_id":                metaAttrs.ID,
+		"hedwig_message_timestamp": fmt.Sprintf("%d", (metaAttrs.Timestamp.UnixNano() / int64(time.Millisecond))),
+		"hedwig_publisher":         metaAttrs.Publisher,
+		"hedwig_schema":            metaAttrs.Schema,
+	}
+	for k, v := range metaAttrs.Headers {
+		attributes[k] = v
+	}
+	return attributes
 }
 
 func (v *messageValidator) Serialize(message *Message) ([]byte, map[string]string, error) {
@@ -70,20 +135,37 @@ func (v *messageValidator) Serialize(message *Message) ([]byte, map[string]strin
 		schema,
 		v.currentFormatVersion,
 	}
-	messagePayload, msgAttrs, err := v.encoder.EncodePayload(message.Data, *v.settings.UseTransportMessageAttributes, metaAttrs)
+	messagePayload, err := v.encoder.EncodeData(message.Data, *v.settings.UseTransportMessageAttributes, metaAttrs)
 	if err != nil {
 		return nil, nil, err
+	}
+	var attributes map[string]string
+	if *v.settings.UseTransportMessageAttributes {
+		attributes = v.encodeMetaAttributes(metaAttrs)
+	} else {
+		attributes = message.Metadata.Headers
 	}
 	// validate payload from scratch before publishing
-	_, err = v.Deserialize(messagePayload, msgAttrs, nil)
+	_, err = v.Deserialize(messagePayload, attributes, nil)
 	if err != nil {
 		return nil, nil, err
 	}
-	return messagePayload, msgAttrs, nil
+	return messagePayload, attributes, nil
 }
 
 func (v *messageValidator) Deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}) (*Message, error) {
-	metaAttrs, extractedData, err := v.encoder.ExtractData(messagePayload, attributes, *v.settings.UseTransportMessageAttributes)
+	var metaAttrs MetaAttributes
+	var data interface{}
+	var err error
+	if *v.settings.UseTransportMessageAttributes {
+		metaAttrs, err = v.decodeMetaAttributes(attributes)
+		if err != nil {
+			return nil, err
+		}
+		data = messagePayload
+	} else {
+		metaAttrs, data, err = v.encoder.ExtractData(messagePayload, attributes)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +180,7 @@ func (v *messageValidator) Deserialize(messagePayload []byte, attributes map[str
 	if err != nil {
 		return nil, err
 	}
-	data, err := v.encoder.DecodeData(metaAttrs, messageType, version, extractedData)
+	data, err = v.encoder.DecodeData(messageType, version, data)
 	if err != nil {
 		return nil, err
 	}

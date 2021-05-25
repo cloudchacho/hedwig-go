@@ -38,13 +38,12 @@ func (s *EncoderTestSuite) TestFormatHumanUUID() {
 	}
 }`)
 	newString := func() interface{} { return new(string) }
-	encoder, err := NewEncoderFromBytes(testSchema, hedwig.DataFactoryRegistry{hedwig.DataRegistryKey{"vehicle_created", 1}: newString})
+	encoder, err := NewEncoderFromBytes(testSchema, hedwig.DataFactoryRegistry{hedwig.MessageTypeMajorVersion{"vehicle_created", 1}: newString})
 	s.NoError(err)
 
 	data := json.RawMessage(`"6cac5588-24cc-4b4f-bbf9-7dc0ce93f96e"`)
 
 	decoded, err := encoder.DecodeData(
-		hedwig.MetaAttributes{Schema: "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0"},
 		"vehicle_created",
 		semver.MustParse("1.0"),
 		data,
@@ -54,7 +53,6 @@ func (s *EncoderTestSuite) TestFormatHumanUUID() {
 
 	data = json.RawMessage(`"abcd"`)
 	_, err = encoder.DecodeData(
-		hedwig.MetaAttributes{Schema: "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0"},
 		"vehicle_created",
 		semver.MustParse("1.0"),
 		data,
@@ -63,7 +61,6 @@ func (s *EncoderTestSuite) TestFormatHumanUUID() {
 
 	data = json.RawMessage(`"yyyyyyyy-tttt-416a-92ed-420e62b33eb5"`)
 	_, err = encoder.DecodeData(
-		hedwig.MetaAttributes{Schema: "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0"},
 		"vehicle_created",
 		semver.MustParse("1.0"),
 		data,
@@ -85,8 +82,8 @@ func (s *EncoderTestSuite) TestInvalidXVersion() {
 	}
 }`)
 	newString := func() interface{} { return new(string) }
-	_, err := NewEncoderFromBytes(testSchema, hedwig.DataFactoryRegistry{hedwig.DataRegistryKey{"vehicle_created", 1}: newString})
-	s.EqualError(err, "Missing x-version from schema definition")
+	_, err := NewEncoderFromBytes(testSchema, hedwig.DataFactoryRegistry{hedwig.MessageTypeMajorVersion{"vehicle_created", 1}: newString})
+	s.EqualError(err, "Missing x-version from schema definition for vehicle_created")
 
 	testSchema = []byte(`{
     "id": "https://hedwig.automatic.com/schema",
@@ -101,7 +98,7 @@ func (s *EncoderTestSuite) TestInvalidXVersion() {
 		}
 	}
 }`)
-	_, err = NewEncoderFromBytes(testSchema, hedwig.DataFactoryRegistry{hedwig.DataRegistryKey{"vehicle_created", 1}: newString})
+	_, err = NewEncoderFromBytes(testSchema, hedwig.DataFactoryRegistry{hedwig.MessageTypeMajorVersion{"vehicle_created", 1}: newString})
 	s.EqualError(err, "invalid value for x-version: foobar, must be semver")
 
 	testSchema = []byte(`{
@@ -117,7 +114,7 @@ func (s *EncoderTestSuite) TestInvalidXVersion() {
 		}
 	}
 }`)
-	_, err = NewEncoderFromBytes(testSchema, hedwig.DataFactoryRegistry{hedwig.DataRegistryKey{"vehicle_created", 1}: newString})
+	_, err = NewEncoderFromBytes(testSchema, hedwig.DataFactoryRegistry{hedwig.MessageTypeMajorVersion{"vehicle_created", 1}: newString})
 	s.Error(err)
 }
 
@@ -137,7 +134,7 @@ func (s *EncoderTestSuite) TestEncodeMessageType() {
 	s.Equal(messageType, "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0")
 }
 
-func (s *EncoderTestSuite) TestEncodePayload() {
+func (s *EncoderTestSuite) TestEncodeData() {
 	data := fakeHedwigDataField{VehicleID: "C_123"}
 	metaAttrs := hedwig.MetaAttributes{
 		Timestamp:     time.Unix(1621550514, 0),
@@ -147,20 +144,12 @@ func (s *EncoderTestSuite) TestEncodePayload() {
 		Schema:        "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
 		FormatVersion: semver.MustParse("1.0"),
 	}
-	payload, attributes, err := s.encoder.EncodePayload(data, true, metaAttrs)
+	payload, err := s.encoder.EncodeData(data, true, metaAttrs)
 	s.NoError(err)
 	s.Equal(string(payload), "{\"vehicle_id\":\"C_123\"}")
-	s.Equal(attributes, map[string]string{
-		"hedwig_message_timestamp": "1621550514",
-		"hedwig_publisher":         "myapp",
-		"foo":                      "bar",
-		"hedwig_id":                "123",
-		"hedwig_schema":            "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
-		"hedwig_format_version":    "1.0",
-	})
 }
 
-func (s *EncoderTestSuite) TestEncodePayloadContainerized() {
+func (s *EncoderTestSuite) TestEncodeDataContainerized() {
 	data := fakeHedwigDataField{VehicleID: "C_123"}
 	metaAttrs := hedwig.MetaAttributes{
 		Timestamp:     time.Unix(1621550514, 0),
@@ -170,19 +159,16 @@ func (s *EncoderTestSuite) TestEncodePayloadContainerized() {
 		Schema:        "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
 		FormatVersion: semver.MustParse("1.0"),
 	}
-	payload, attributes, err := s.encoder.EncodePayload(data, false, metaAttrs)
+	payload, err := s.encoder.EncodeData(data, false, metaAttrs)
 	s.NoError(err)
 	s.Equal(string(payload), "{\"format_version\":\"1.0\","+
 		"\"schema\":\"https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0\","+
 		"\"id\":\"123\","+
 		"\"metadata\":{\"Timestamp\":1621550514000,\"Publisher\":\"myapp\",\"Headers\":{\"foo\":\"bar\"}},"+
 		"\"data\":{\"vehicle_id\":\"C_123\"}}")
-	s.Equal(attributes, map[string]string{
-		"foo": "bar",
-	})
 }
 
-func (s *EncoderTestSuite) TestEncodePayloadFailInvalidData() {
+func (s *EncoderTestSuite) TestEncodeDataFailInvalidData() {
 	data := make(chan bool)
 	metaAttrs := hedwig.MetaAttributes{
 		Timestamp:     time.Unix(1621550514, 0),
@@ -192,76 +178,11 @@ func (s *EncoderTestSuite) TestEncodePayloadFailInvalidData() {
 		Schema:        "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
 		FormatVersion: semver.MustParse("1.0"),
 	}
-	_, _, err := s.encoder.EncodePayload(data, true, metaAttrs)
+	_, err := s.encoder.EncodeData(data, true, metaAttrs)
 	s.Error(err)
 }
 
 func (s *EncoderTestSuite) TestExtractData() {
-	payload := []byte(`{"vehicle_id":"C_123"}`)
-	attributes := map[string]string{
-		"hedwig_message_timestamp": "1621550514123",
-		"hedwig_publisher":         "myapp",
-		"foo":                      "bar",
-		"hedwig_id":                "123",
-		"hedwig_schema":            "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
-		"hedwig_format_version":    "1.0",
-	}
-	metaAttrs, extractedData, err := s.encoder.ExtractData(payload, attributes, true)
-	s.NoError(err)
-	s.Equal(metaAttrs, hedwig.MetaAttributes{
-		Timestamp:     time.Unix(1621550514, 0),
-		Publisher:     "myapp",
-		Headers:       map[string]string{"foo": "bar"},
-		ID:            "123",
-		Schema:        "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
-		FormatVersion: semver.MustParse("1.0"),
-	})
-	s.Equal(string(extractedData.(json.RawMessage)), "{\"vehicle_id\":\"C_123\"}")
-}
-
-func (s *EncoderTestSuite) TestExtractDataValidation() {
-	payload := []byte(`{"vehicle_id":"C_123"}`)
-	attributes := map[string]string{
-		"hedwig_message_timestamp": "1621550514123",
-		"hedwig_publisher":         "myapp",
-		"foo":                      "bar",
-		"hedwig_id":                "123",
-		"hedwig_schema":            "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
-		"hedwig_format_version":    "1.0",
-	}
-	tests := map[string]struct {
-		field    string
-		badValue string
-	}{
-		"timestamp_missing":         {"hedwig_message_timestamp", "missing"},
-		"timestamp_string":          {"hedwig_message_timestamp", "foobar"},
-		"timestamp_iso_string":      {"hedwig_message_timestamp", "2021-05-20T16:02:41-0700"},
-		"publisher_missing":         {"hedwig_publisher", "missing"},
-		"id_missing":                {"hedwig_id", "missing"},
-		"schema_missing":            {"hedwig_schema", "missing"},
-		"format_version_missing":    {"hedwig_format_version", "missing"},
-		"format_version_not_semver": {"hedwig_format_version", "foobar"},
-	}
-
-	for name, test := range tests {
-		s.Run(name, func() {
-			badAttributes := map[string]string{}
-			for k, v := range attributes {
-				if k == test.field {
-					if test.badValue != "missing" {
-						badAttributes[k] = test.badValue
-					}
-				} else {
-					badAttributes[k] = v
-				}
-			}
-			_, _, err := s.encoder.ExtractData(payload, badAttributes, true)
-			s.Error(err)
-		})
-	}
-}
-
-func (s *EncoderTestSuite) TestExtractDataContainerized() {
 	payload := []byte(`{"format_version":"1.0",
 		"schema":"https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
 		"id":"d70a641e-14ab-32e4-a790-459bd36de532",
@@ -270,7 +191,7 @@ func (s *EncoderTestSuite) TestExtractDataContainerized() {
 	attributes := map[string]string{
 		"foo": "bar",
 	}
-	metaAttrs, extractedData, err := s.encoder.ExtractData(payload, attributes, false)
+	metaAttrs, extractedData, err := s.encoder.ExtractData(payload, attributes)
 	s.NoError(err)
 	s.Equal(metaAttrs, hedwig.MetaAttributes{
 		Timestamp:     time.Unix(1621550514, 0),
@@ -283,7 +204,7 @@ func (s *EncoderTestSuite) TestExtractDataContainerized() {
 	s.Equal(string(extractedData.(json.RawMessage)), "{\"vehicle_id\":\"C_123\"}")
 }
 
-func (s *EncoderTestSuite) TestExtractDataContainerizedInvalid() {
+func (s *EncoderTestSuite) TestExtractDataInvalid() {
 	payload := []byte(`{"schema":"https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
 		"id":"d70a641e-14ab-32e4-a790-459bd36de532",
 		"metadata":{"Timestamp":1621550514000,"Publisher":"myapp","Headers":{"foo":"bar"}},
@@ -291,7 +212,7 @@ func (s *EncoderTestSuite) TestExtractDataContainerizedInvalid() {
 	attributes := map[string]string{
 		"foo": "bar",
 	}
-	_, _, err := s.encoder.ExtractData(payload, attributes, false)
+	_, _, err := s.encoder.ExtractData(payload, attributes)
 	s.Error(err)
 }
 
@@ -311,15 +232,7 @@ func (s *EncoderTestSuite) TestDecodeData() {
 	data := json.RawMessage(`{"vehicle_id":"C_1234567890123456"}`)
 	messageType := "vehicle_created"
 	version := semver.MustParse("1.0")
-	metaAttrs := hedwig.MetaAttributes{
-		Timestamp:     time.Unix(1621550514, 0),
-		Publisher:     "myapp",
-		Headers:       map[string]string{"foo": "bar"},
-		ID:            "d70a641e-14ab-32e4-a790-459bd36de532",
-		Schema:        "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
-		FormatVersion: semver.MustParse("1.0"),
-	}
-	decodedData, err := s.encoder.DecodeData(metaAttrs, messageType, version, data)
+	decodedData, err := s.encoder.DecodeData(messageType, version, data)
 	s.NoError(err)
 	s.Equal(decodedData, &fakeHedwigDataField{VehicleID: "C_1234567890123456"})
 }
@@ -328,15 +241,7 @@ func (s *EncoderTestSuite) TestDecodeDataUnknownType() {
 	data := json.RawMessage(`{"vehicle_id":"C_1234567890123456"}`)
 	messageType := "unknown"
 	version := semver.MustParse("1.0")
-	metaAttrs := hedwig.MetaAttributes{
-		Timestamp:     time.Unix(1621550514, 0),
-		Publisher:     "myapp",
-		Headers:       map[string]string{"foo": "bar"},
-		ID:            "d70a641e-14ab-32e4-a790-459bd36de532",
-		Schema:        "https://hedwig.automatic.com/schema#/schemas/unknown/1.0",
-		FormatVersion: semver.MustParse("1.0"),
-	}
-	_, err := s.encoder.DecodeData(metaAttrs, messageType, version, data)
+	_, err := s.encoder.DecodeData(messageType, version, data)
 	s.Error(err)
 }
 
@@ -344,15 +249,7 @@ func (s *EncoderTestSuite) TestDecodeDataUnknownVersion() {
 	data := json.RawMessage(`{"vehicle_id":"C_1234567890123456"}`)
 	messageType := "vehicle_created"
 	version := semver.MustParse("2.0")
-	metaAttrs := hedwig.MetaAttributes{
-		Timestamp:     time.Unix(1621550514, 0),
-		Publisher:     "myapp",
-		Headers:       map[string]string{"foo": "bar"},
-		ID:            "d70a641e-14ab-32e4-a790-459bd36de532",
-		Schema:        "https://hedwig.automatic.com/schema#/schemas/vehicle_created/2.0",
-		FormatVersion: semver.MustParse("1.0"),
-	}
-	_, err := s.encoder.DecodeData(metaAttrs, messageType, version, data)
+	_, err := s.encoder.DecodeData(messageType, version, data)
 	s.Error(err)
 }
 
@@ -360,15 +257,7 @@ func (s *EncoderTestSuite) TestDecodeDataInvalidSchema() {
 	data := json.RawMessage(`{"vehicle_id":"C_1234567890123456"}`)
 	messageType := "vehicle_created"
 	version := semver.MustParse("2.0")
-	metaAttrs := hedwig.MetaAttributes{
-		Timestamp:     time.Unix(1621550514, 0),
-		Publisher:     "myapp",
-		Headers:       map[string]string{"foo": "bar"},
-		ID:            "d70a641e-14ab-32e4-a790-459bd36de532",
-		Schema:        "vehicle_created/1.0",
-		FormatVersion: semver.MustParse("1.0"),
-	}
-	_, err := s.encoder.DecodeData(metaAttrs, messageType, version, data)
+	_, err := s.encoder.DecodeData(messageType, version, data)
 	s.Error(err)
 }
 
@@ -376,15 +265,7 @@ func (s *EncoderTestSuite) TestDecodeDataInvalidDataType() {
 	data := []byte(`{"vehicle_id":"C_1234567890123456"}`)
 	messageType := "vehicle_created"
 	version := semver.MustParse("2.0")
-	metaAttrs := hedwig.MetaAttributes{
-		Timestamp:     time.Unix(1621550514, 0),
-		Publisher:     "myapp",
-		Headers:       map[string]string{"foo": "bar"},
-		ID:            "d70a641e-14ab-32e4-a790-459bd36de532",
-		Schema:        "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
-		FormatVersion: semver.MustParse("1.0"),
-	}
-	_, err := s.encoder.DecodeData(metaAttrs, messageType, version, data)
+	_, err := s.encoder.DecodeData(messageType, version, data)
 	s.Error(err)
 }
 
@@ -392,15 +273,7 @@ func (s *EncoderTestSuite) TestDecodeDataInvalidData() {
 	data := []byte(`{}`)
 	messageType := "vehicle_created"
 	version := semver.MustParse("2.0")
-	metaAttrs := hedwig.MetaAttributes{
-		Timestamp:     time.Unix(1621550514, 0),
-		Publisher:     "myapp",
-		Headers:       map[string]string{"foo": "bar"},
-		ID:            "d70a641e-14ab-32e4-a790-459bd36de532",
-		Schema:        "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
-		FormatVersion: semver.MustParse("1.0"),
-	}
-	_, err := s.encoder.DecodeData(metaAttrs, messageType, version, data)
+	_, err := s.encoder.DecodeData(messageType, version, data)
 	s.Error(err)
 }
 
@@ -408,15 +281,7 @@ func (s *EncoderTestSuite) TestDecodeDataInvalidDataJSON() {
 	data := json.RawMessage(`{`)
 	messageType := "vehicle_created"
 	version := semver.MustParse("1.0")
-	metaAttrs := hedwig.MetaAttributes{
-		Timestamp:     time.Unix(1621550514, 0),
-		Publisher:     "myapp",
-		Headers:       map[string]string{"foo": "bar"},
-		ID:            "d70a641e-14ab-32e4-a790-459bd36de532",
-		Schema:        "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
-		FormatVersion: semver.MustParse("1.0"),
-	}
-	_, err := s.encoder.DecodeData(metaAttrs, messageType, version, data)
+	_, err := s.encoder.DecodeData(messageType, version, data)
 	s.Error(err)
 }
 
@@ -424,15 +289,7 @@ func (s *EncoderTestSuite) TestDecodeDataInvalidDataFactory() {
 	data := json.RawMessage(`{}`)
 	messageType := "trip_created"
 	version := semver.MustParse("2.0")
-	metaAttrs := hedwig.MetaAttributes{
-		Timestamp:     time.Unix(1621550514, 0),
-		Publisher:     "myapp",
-		Headers:       map[string]string{"foo": "bar"},
-		ID:            "d70a641e-14ab-32e4-a790-459bd36de532",
-		Schema:        "https://hedwig.automatic.com/schema#/schemas/trip_created/1.0",
-		FormatVersion: semver.MustParse("1.0"),
-	}
-	_, err := s.encoder.DecodeData(metaAttrs, messageType, version, data)
+	_, err := s.encoder.DecodeData(messageType, version, data)
 	s.Error(err)
 }
 
@@ -446,7 +303,7 @@ type EncoderTestSuite struct {
 }
 
 func (s *EncoderTestSuite) SetupTest() {
-	registry := hedwig.DataFactoryRegistry{hedwig.DataRegistryKey{"vehicle_created", 1}: newFakeHedwigDataField}
+	registry := hedwig.DataFactoryRegistry{hedwig.MessageTypeMajorVersion{"vehicle_created", 1}: newFakeHedwigDataField}
 	encoder, err := NewMessageEncoder("schema.json", registry)
 	require.NoError(s.T(), err)
 
@@ -457,9 +314,9 @@ func TestEncoderTestSuite(t *testing.T) {
 	suite.Run(t, &EncoderTestSuite{})
 }
 
-func TestInvalidSchemaNoXVersion(t *testing.T) {
+func TestInvalidSchemaNotMajorVersion(t *testing.T) {
 	assertions := assert.New(t)
-	schemaMissingXversions := `
+	invalidSchema := `
 	{
 		"id": "https://hedwig.automatic.com/schema",
 		"$schema": "http://json-schema.org/draft-04/schema#",
@@ -489,23 +346,136 @@ func TestInvalidSchemaNoXVersion(t *testing.T) {
 		}
 	}
 	`
-	v, err := NewEncoderFromBytes([]byte(schemaMissingXversions), hedwig.DataFactoryRegistry{})
+	v, err := NewEncoderFromBytes([]byte(invalidSchema), hedwig.DataFactoryRegistry{})
+	assertions.Nil(v)
+	assertions.Error(err)
+}
+
+func TestInvalidSchemaMajorVersionMismatch(t *testing.T) {
+	assertions := assert.New(t)
+	invalidSchema := `
+	{
+		"id": "https://hedwig.automatic.com/schema",
+		"$schema": "http://json-schema.org/draft-04/schema#",
+		"description": "Test Schema for Hedwig messages",
+		"schemas": {
+			"trip_created": {
+				"1.*": {
+					"description": "This is a message type",
+					"type": "object",
+					"required": [
+						"vehicle_id",
+						"user_id"
+					],
+					"properties": {
+						"vehicle_id": {
+							"type": "string"
+						},
+						"user_id": {
+							"type": "string"
+						},
+						"vin": {
+							"type": "string"
+						}
+					},
+					"x-version": "2.0"
+				}
+			}
+		}
+	}
+	`
+	v, err := NewEncoderFromBytes([]byte(invalidSchema), hedwig.DataFactoryRegistry{})
+	assertions.Nil(v)
+	assertions.Error(err)
+}
+
+func TestInvalidSchemaNoXVersion(t *testing.T) {
+	assertions := assert.New(t)
+	invalidSchema := `
+	{
+		"id": "https://hedwig.automatic.com/schema",
+		"$schema": "http://json-schema.org/draft-04/schema#",
+		"description": "Test Schema for Hedwig messages",
+		"schemas": {
+			"trip_created": {
+				"1.*": {
+					"description": "This is a message type",
+					"type": "object",
+					"required": [
+						"vehicle_id",
+						"user_id"
+					],
+					"properties": {
+						"vehicle_id": {
+							"type": "string"
+						},
+						"user_id": {
+							"type": "string"
+						},
+						"vin": {
+							"type": "string"
+						}
+					}
+				}
+			}
+		}
+	}
+	`
+	v, err := NewEncoderFromBytes([]byte(invalidSchema), hedwig.DataFactoryRegistry{})
 	assertions.Nil(v)
 	assertions.Error(err)
 }
 
 func TestInvalidSchemaNotJSON(t *testing.T) {
 	assertions := assert.New(t)
-	schemaNotObject := `"https://hedwig.automatic.com/schema"`
-	v, err := NewEncoderFromBytes([]byte(schemaNotObject), hedwig.DataFactoryRegistry{})
+	invalidSchema := `"https://hedwig.automatic.com/schema"`
+	v, err := NewEncoderFromBytes([]byte(invalidSchema), hedwig.DataFactoryRegistry{})
 	assertions.Nil(v)
 	assertions.Error(err)
 }
 
 func TestInvalidSchemaNotObject(t *testing.T) {
 	assertions := assert.New(t)
-	schemaNotObject := `foobar`
-	v, err := NewEncoderFromBytes([]byte(schemaNotObject), hedwig.DataFactoryRegistry{})
+	invalidSchema := `foobar`
+	v, err := NewEncoderFromBytes([]byte(invalidSchema), hedwig.DataFactoryRegistry{})
 	assertions.Nil(v)
 	assertions.Error(err)
+}
+
+func TestInvalidSchemaMessageTypeNotFound(t *testing.T) {
+	assertions := assert.New(t)
+	schema := `
+	{
+		"id": "https://hedwig.automatic.com/schema",
+		"$schema": "http://json-schema.org/draft-04/schema#",
+		"description": "Test Schema for Hedwig messages",
+		"schemas": {
+			"trip_created": {
+				"1.*": {
+					"description": "This is a message type",
+					"type": "object",
+					"required": [
+						"vehicle_id",
+						"user_id"
+					],
+					"properties": {
+						"vehicle_id": {
+							"type": "string"
+						},
+						"user_id": {
+							"type": "string"
+						},
+						"vin": {
+							"type": "string"
+						}
+					},
+					"x-version": "1.0"
+				}
+			}
+		}
+	}
+	`
+	v, err := NewEncoderFromBytes([]byte(schema), hedwig.DataFactoryRegistry{{"user-created", 1}: newFakeHedwigDataField})
+	assertions.Nil(v)
+	assertions.EqualError(err, "Schema not found for message type user-created, major version 1")
 }

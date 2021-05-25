@@ -9,14 +9,6 @@ import (
 	"time"
 )
 
-// MessageRouteKey is a key identifying a message route
-type MessageRouteKey struct {
-	// Message type
-	MessageType string
-	// Message major version
-	MessageMajorVersion int
-}
-
 // GetLoggerFunc returns the logger object
 type GetLoggerFunc func(ctx context.Context) ILogger
 
@@ -37,10 +29,10 @@ type Settings struct {
 	AWSReadTimeoutS time.Duration // optional; default: 2 seconds
 
 	// CallbackRegistry contains callbacks by message type and message version
-	CallbackRegistry *CallbackRegistry
+	CallbackRegistry CallbackRegistry
 
 	// DataFactoryRegistry contains data factories by message type and message version
-	DataFactoryRegistry *DataFactoryRegistry
+	DataFactoryRegistry DataFactoryRegistry
 
 	// GetLogger is a function that takes the context object and returns a logger. This may be used to plug in
 	// your desired logger library. Defaults to using std library.
@@ -51,7 +43,7 @@ type Settings struct {
 	//   <message type>, <message version> => topic name
 	// An entry is required for every message type that the app wants to consumer or publish. It is
 	// recommended that major versions of a message be published on separate topics.
-	MessageRouting map[MessageRouteKey]string
+	MessageRouting MessageRouting
 
 	// PublisherName name
 	PublisherName string
