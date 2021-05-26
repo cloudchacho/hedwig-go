@@ -325,10 +325,6 @@ func (me *messageEncoder) DecodeMessageType(schema string) (string, *semver.Vers
 func (me *messageEncoder) ExtractData(messagePayload []byte, attributes map[string]string) (hedwig.MetaAttributes, interface{}, error) {
 	metaAttrs := hedwig.MetaAttributes{}
 
-	if me.dataRegistry == nil {
-		return metaAttrs, nil, errors.New("dataRegistry must be set")
-	}
-
 	err := containerSchema.Validate(bytes.NewReader(messagePayload))
 	if err != nil {
 		return metaAttrs, nil, errors.Wrap(err, "unable to verify containerized format")

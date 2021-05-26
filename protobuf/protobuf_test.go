@@ -142,6 +142,31 @@ func (s *EncoderTestSuite) TestExtractDataInvalid() {
 	s.Error(err)
 }
 
+func (s *EncoderTestSuite) TestExtractDataInvalidFormatVersion() {
+	vehicleID := "C_123"
+	data := &internal.VehicleCreatedV1{VehicleId: &vehicleID}
+	any, err := anypb.New(data)
+	s.Require().NoError(err)
+	payloadMsg := &protobuf.PayloadV1{
+		FormatVersion: "foobar",
+		Id:            "d70a641e-14ab-32e4-a790-459bd36de532",
+		Metadata: &protobuf.MetadataV1{
+			Publisher: "myapp",
+			Timestamp: timestamppb.New(time.Unix(1621550514, 123000000)),
+			Headers:   map[string]string{"foo": "bar"},
+		},
+		Schema: "vehicle_created/1.0",
+		Data:   any,
+	}
+	payload, err := proto.Marshal(payloadMsg)
+	s.Require().NoError(err)
+	attributes := map[string]string{
+		"foo": "bar",
+	}
+	_, _, err = s.encoder.ExtractData(payload, attributes)
+	s.Error(err)
+}
+
 func (s *EncoderTestSuite) TestDecodeMessageType() {
 	schema := "vehicle_created/1.0"
 	messageType, version, err := s.encoder.DecodeMessageType(schema)
@@ -149,7 +174,7 @@ func (s *EncoderTestSuite) TestDecodeMessageType() {
 	s.Equal(messageType, "vehicle_created")
 	s.Equal(version, semver.MustParse("1.0"))
 
-	schema = "vehicle_created 1.0"
+	schema = "https://hedwig.automatic.com/schema#/schemas/vehicle_created 1.0"
 	_, _, err = s.encoder.DecodeMessageType(schema)
 	s.Error(err)
 }
@@ -164,6 +189,18 @@ func (s *EncoderTestSuite) TestDecodeData() {
 	decodedDataMsg, err := s.encoder.DecodeData(messageType, version, data)
 	s.NoError(err)
 	s.Equal(dataMsg.String(), decodedDataMsg.(*internal.VehicleCreatedV1).String())
+}
+
+func (s *EncoderTestSuite) TestDecodeDataContainerized() {
+	vehicleID := "C_123"
+	data := &internal.VehicleCreatedV1{VehicleId: &vehicleID}
+	any, err := anypb.New(data)
+	s.Require().NoError(err)
+	messageType := "vehicle_created"
+	version := semver.MustParse("1.0")
+	decodedDataMsg, err := s.encoder.DecodeData(messageType, version, any)
+	s.NoError(err)
+	s.Equal(data.String(), decodedDataMsg.(*internal.VehicleCreatedV1).String())
 }
 
 func (s *EncoderTestSuite) TestDecodeDataUnknownType() {
@@ -200,7 +237,7 @@ func (s *EncoderTestSuite) TestDecodeDataInvalidSchema() {
 }
 
 func (s *EncoderTestSuite) TestDecodeDataInvalidDataType() {
-	data := []byte(`{"vehicle_id":"C_1234567890123456"}`)
+	data := `{"vehicle_id":"C_1234567890123456"}`
 	messageType := "vehicle_created"
 	version := semver.MustParse("2.0")
 	_, err := s.encoder.DecodeData(messageType, version, data)
@@ -239,6 +276,56 @@ func (s *EncoderTestSuite) SetupTest() {
 
 func TestEncoderTestSuite(t *testing.T) {
 	suite.Run(t, &EncoderTestSuite{})
+}
+
+func TestNewMessageEncoderFromMessageTypes(t *testing.T) {
+	assertions := assert.New(t)
+	protoMsgs := map[hedwig.MessageTypeMajorVersion]protoreflect.Message{
+		{"device_created", 1}: (&internal.DeviceCreated{}).ProtoReflect(),
+	}
+	v, err := protobuf.NewMessageEncoderFromMessageTypes(protoMsgs)
+	assertions.NoError(err)
+	assertions.NotNil(v)
+}
+
+func TestNewMessageEncoderFromMessageTypesInvalidMessageType(t *testing.T) {
+	assertions := assert.New(t)
+	invalidProtoMsgs := map[hedwig.MessageTypeMajorVersion]protoreflect.Message{
+		{"", 1}: (&internal.DeviceCreated{}).ProtoReflect(),
+	}
+	v, err := protobuf.NewMessageEncoderFromMessageTypes(invalidProtoMsgs)
+	assertions.Nil(v)
+	assertions.Error(err)
+}
+
+func TestNewMessageEncoderFromMessageTypesInvalidMajorVersion(t *testing.T) {
+	assertions := assert.New(t)
+	invalidProtoMsgs := map[hedwig.MessageTypeMajorVersion]protoreflect.Message{
+		{"device_created", 0}: (&internal.DeviceCreated{}).ProtoReflect(),
+	}
+	v, err := protobuf.NewMessageEncoderFromMessageTypes(invalidProtoMsgs)
+	assertions.Nil(v)
+	assertions.Error(err)
+}
+
+func TestNewMessageEncoderFromMessageTypesMessageTypeMismatch(t *testing.T) {
+	assertions := assert.New(t)
+	invalidProtoMsgs := map[hedwig.MessageTypeMajorVersion]protoreflect.Message{
+		{"device_created", 1}: (&internal.VehicleCreatedV1{}).ProtoReflect(),
+	}
+	v, err := protobuf.NewMessageEncoderFromMessageTypes(invalidProtoMsgs)
+	assertions.Nil(v)
+	assertions.Error(err)
+}
+
+func TestNewMessageEncoderFromMessageTypesMajorVersionMismatch(t *testing.T) {
+	assertions := assert.New(t)
+	invalidProtoMsgs := map[hedwig.MessageTypeMajorVersion]protoreflect.Message{
+		{"vehicle_created", 2}: (&internal.VehicleCreatedV1{}).ProtoReflect(),
+	}
+	v, err := protobuf.NewMessageEncoderFromMessageTypes(invalidProtoMsgs)
+	assertions.Nil(v)
+	assertions.Error(err)
 }
 
 func TestInvalidSchemaBadNameNoMessageType(t *testing.T) {

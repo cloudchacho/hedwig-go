@@ -27,6 +27,6 @@ func TestJSONTimeUnmarshal(t *testing.T) {
 
 func TestJSONTimeUnmarshalFailure(t *testing.T) {
 	ts := jsonschema.JSONTime{}
-	err := json.Unmarshal([]byte(`2021-05-24T11:23:47-0700`), &ts)
-	require.Error(t, err)
+	err := json.Unmarshal([]byte(`"2021-05-24T11:23:47-0700"`), &ts)
+	assert.Error(t, err)
 }

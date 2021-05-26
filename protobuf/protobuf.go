@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"regexp"
 	"strconv"
-	"strings"
 
 	"github.com/Masterminds/semver"
 	"github.com/pkg/errors"
@@ -175,16 +174,6 @@ func (me *messageEncoder) VerifyKnownMinorVersion(messageType string, version *s
 // EncodeMessageType encodes the message type with appropriate format for transport over the wire
 func (me *messageEncoder) EncodeMessageType(messageType string, version *semver.Version) string {
 	return fmt.Sprintf("%s/%d.%d", messageType, version.Major(), version.Minor())
-}
-
-func (me *messageEncoder) msgClassName(messageType string, version *semver.Version) string {
-	msgClassName := messageType
-	msgClassName = strings.ReplaceAll(msgClassName, "-", "")
-	msgClassName = strings.ReplaceAll(msgClassName, ".", "")
-	msgClassName = strings.ReplaceAll(msgClassName, "_", "")
-	msgClassName = strings.Title(msgClassName)
-	msgClassName = strings.ReplaceAll(msgClassName, " ", "")
-	return fmt.Sprintf("%sV%d", msgClassName, version.Major())
 }
 
 // DecodeMessageType decodes message type from meta attributes
