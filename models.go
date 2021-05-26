@@ -24,6 +24,7 @@ type metadata struct {
 	Timestamp time.Time
 
 	// ProviderMetadata represents backend provider specific metadata, e.g. AWS receipt, or Pub/Sub ack ID
+	// For concrete type of metadata, check the documentation of your backend class
 	ProviderMetadata interface{}
 }
 

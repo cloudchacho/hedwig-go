@@ -20,10 +20,12 @@ The modules in this directory let you run Hedwig with a real backend.
 1. Configure project:
     ```shell script
     $ gcloud config set project <GCP_PROJECT_ID>
+    $ gcloud pubsub topics create hedwig-dev-myapp-dlq
+    $ gcloud pubsub subscriptions create hedwig-dev-myapp-dlq --topic hedwig-dev-myapp-dlq
     $ gcloud pubsub topics create hedwig-dev-user-created-v1
-    $ gcloud pubsub subscriptions create hedwig-dev-myapp-dev-user-created-v1 --topic hedwig-dev-user-created-v1
+    $ gcloud pubsub subscriptions create hedwig-dev-myapp-dev-user-created-v1 --topic hedwig-dev-user-created-v1 --dead-letter-topic hedwig-dev-myapp-dlq
     $ gcloud pubsub topics create hedwig-dev-myapp
-    $ gcloud pubsub subscriptions create hedwig-dev-myapp --topic hedwig-dev-myapp
+    $ gcloud pubsub subscriptions create hedwig-dev-myapp --topic hedwig-dev-myapp --dead-letter-topic hedwig-dev-myapp-dlq
     ```
 
 ### AWS

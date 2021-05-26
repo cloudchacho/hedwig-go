@@ -57,7 +57,7 @@ type Settings struct {
 
 	// SubscriptionsCrossProject is a list of tuples of topic name and GCP project for cross-project topic messages.
 	// Google only.
-	SubscriptionsCrossProject []string
+	SubscriptionsCrossProject []SubscriptionProject
 
 	// ShutdownTimeout is the time the app has to shut down before being brutally killed
 	ShutdownTimeout time.Duration // optional; defaults to 10s
@@ -67,6 +67,9 @@ type Settings struct {
 	// publishing metadata and newer apps should not change this value.
 	// default True
 	UseTransportMessageAttributes *bool
+
+	// GoogleCloudProject ID that contains Pub/Sub resources.
+	GoogleCloudProject string
 }
 
 func (s *Settings) initDefaults() {

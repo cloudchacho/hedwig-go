@@ -32,6 +32,15 @@ type MessageRouting map[MessageTypeMajorVersion]string
 // ErrRetry should cause the task to retry, but not treat the retry as an error
 var ErrRetry = errors.New("Retry error")
 
+// SubscriptionProject represents a tuple of subscription name and project for cross-project Google subscriptions
+type SubscriptionProject struct {
+	// Subscription name
+	Subscription string
+
+	// ProjectID
+	ProjectID string
+}
+
 type ConsumerCallback func(ctx context.Context, payload []byte, attributes map[string]string, providerMetadata interface{})
 
 type IBackend interface {

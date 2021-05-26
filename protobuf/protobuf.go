@@ -67,6 +67,9 @@ func NewMessageEncoderFromMessageTypes(protoMessages map[hedwig.MessageTypeMajor
 }
 
 // NewMessageEncoder creates a new encoder from given list of proto-messages
+// Proto messages must declare [hedwig.message_options](https://github.com/cloudchacho/hedwig/blob/main/protobuf/options.proto) option.
+// See [example proto file](../examples/schema.proto) for reference.
+//
 // This method will try to read message type from message_options, and if not specified,
 // assume that the messages are named as: `<MessageType>V<MajorVersion>`. If that doesn't work
 // for your use case, use NewMessageEncoderFromMessageTypes and provide an explicit mapping.
