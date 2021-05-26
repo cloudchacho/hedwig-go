@@ -6,21 +6,25 @@ package hedwig
 
 /*
 
-Hedwig is a inter-service communication bus that works on AWS SQS/SNS, while keeping things pretty simple and
-straight forward. It uses JSON schema draft v4 (http://json-schema.org/specification-links.html#draft-4) for schema validation so all incoming
-and outgoing messages are validated against pre-defined schema.
+Hedwig is an inter-service communication bus that works on AWS and GCP, while keeping things pretty simple and straight
+forward.
+
+It allows validation of the message payloads before they are sent, helping to catch cross-component incompatibilities
+early.
 
 Hedwig allows separation of concerns between consumers and publishers so your services are loosely coupled, and the
-contract is enforced by the schema validation. Hedwig may also be used to build asynchronous APIs.
+contract is enforced by the message payload validation. Hedwig may also be used to build asynchronous APIs.
 
-For intra-service messaging, see Taskhawk (https://github.com/Automatic/taskhawk-go).
+For intra-service messaging, see [Taskhawk](https://github.com/cloudchacho/taskhawk-go).
+
+To learn more, [read the docs](https://cloudchacho.github.io/hedwig).
 
 Provisioning
 
 Hedwig works on SQS and SNS as backing queues. Before you can publish/consume messages, you need to provision the
 required infra. This may be done manually, or, preferably, using Terraform. Hedwig provides tools to make infra
-configuration easier: see Terraform (https://github.com/Automatic/hedwig-terraform) and
-Hedwig Terraform Generator (https://github.com/Automatic/hedwig-terraform-generator) for further details.
+configuration easier: see Terraform (https://github.com/cloudchacho/hedwig-terraform) and
+Hedwig Terraform Generator (https://github.com/cloudchacho/hedwig-terraform-generator) for further details.
 
 Initialization
 
