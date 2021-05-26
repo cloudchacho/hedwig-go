@@ -150,7 +150,7 @@ func (me *messageEncoder) EncodeData(data interface{}, useMessageTransport bool,
 	} else {
 		payload, err = proto.Marshal(dataTyped)
 		if err != nil {
-			// Unable to convert to JSON
+			// Unable to convert to bytes
 			return nil, err
 		}
 	}

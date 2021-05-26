@@ -239,7 +239,7 @@ func (s *EncoderTestSuite) TestDecodeDataInvalidSchema() {
 func (s *EncoderTestSuite) TestDecodeDataInvalidDataType() {
 	data := `{"vehicle_id":"C_1234567890123456"}`
 	messageType := "vehicle_created"
-	version := semver.MustParse("2.0")
+	version := semver.MustParse("1.0")
 	_, err := s.encoder.DecodeData(messageType, version, data)
 	s.Error(err)
 }
@@ -247,7 +247,7 @@ func (s *EncoderTestSuite) TestDecodeDataInvalidDataType() {
 func (s *EncoderTestSuite) TestDecodeDataInvalidData() {
 	data := []byte(`{}`)
 	messageType := "vehicle_created"
-	version := semver.MustParse("2.0")
+	version := semver.MustParse("1.0")
 	_, err := s.encoder.DecodeData(messageType, version, data)
 	s.Error(err)
 }
