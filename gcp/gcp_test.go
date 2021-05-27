@@ -62,7 +62,7 @@ func (s *BackendTestSuite) publish(payload []byte, attributes map[string]string,
 func (s *BackendTestSuite) TestReceive() {
 	ctx, cancel := context.WithCancel(context.Background())
 	numMessages := uint32(10)
-	visibilityTimeoutS := uint32(10)
+	visibilityTimeout := time.Second * 10
 
 	payload := []byte(`{"vehicle_id": "C_123"}`)
 	attributes := map[string]string{
@@ -98,7 +98,7 @@ func (s *BackendTestSuite) TestReceive() {
 
 	ch := make(chan bool)
 	go func() {
-		err := s.backend.Receive(ctx, numMessages, visibilityTimeoutS, s.fakeConsumerCallback.Callback)
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
 		s.EqualError(err, "context canceled")
 		ch <- true
 		close(ch)
@@ -118,11 +118,11 @@ func (s *BackendTestSuite) TestReceive() {
 func (s *BackendTestSuite) TestReceiveNoMessages() {
 	ctx, cancel := context.WithCancel(context.Background())
 	numMessages := uint32(10)
-	visibilityTimeoutS := uint32(10)
+	visibilityTimeout := time.Second * 10
 
 	ch := make(chan bool)
 	go func() {
-		err := s.backend.Receive(ctx, numMessages, visibilityTimeoutS, s.fakeConsumerCallback.Callback)
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
 		s.EqualError(err, "context canceled")
 		ch <- true
 		close(ch)
@@ -139,13 +139,13 @@ func (s *BackendTestSuite) TestReceiveNoMessages() {
 func (s *BackendTestSuite) TestReceiveError() {
 	ctx := context.Background()
 	numMessages := uint32(10)
-	visibilityTimeoutS := uint32(10)
+	visibilityTimeout := time.Second * 10
 
 	s.settings.QueueName = "does-not-exist"
 
 	ch := make(chan bool)
 	go func() {
-		err := s.backend.Receive(ctx, numMessages, visibilityTimeoutS, s.fakeConsumerCallback.Callback)
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
 		s.EqualError(err, "rpc error: code = NotFound desc = Subscription does not exist (resource=hedwig-does-not-exist)")
 		ch <- true
 		close(ch)
@@ -237,7 +237,7 @@ func (s *BackendTestSuite) TestNack() {
 		cancel()
 		s.Equal(message.Data, s.payload)
 		s.Equal(message.Attributes, s.attributes)
-		s.Equal(*message.DeliveryAttempt, 2)
+		s.GreaterOrEqual(*message.DeliveryAttempt, 2)
 		message.Ack()
 	})
 }

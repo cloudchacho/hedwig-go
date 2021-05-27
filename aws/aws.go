@@ -116,7 +116,7 @@ func (a *awsBackend) Publish(ctx context.Context, message *hedwig.Message, paylo
 
 // Receive messages from configured queue(s) and provide it through the callback. This should run indefinitely
 // until the context is cancelled. Provider metadata should include all info necessary to ack/nack a message.
-func (a *awsBackend) Receive(ctx context.Context, numMessages uint32, visibilityTimeoutS uint32, callback hedwig.ConsumerCallback) error {
+func (a *awsBackend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback hedwig.ConsumerCallback) error {
 	queueURL, err := a.getSQSQueueURL(ctx)
 	if err != nil {
 		return errors.Wrap(err, "failed to get SQS Queue URL")
@@ -128,8 +128,8 @@ func (a *awsBackend) Receive(ctx context.Context, numMessages uint32, visibility
 		AttributeNames:        []*string{aws.String(sqs.QueueAttributeNameAll)},
 		MessageAttributeNames: []*string{aws.String(sqs.QueueAttributeNameAll)},
 	}
-	if visibilityTimeoutS != 0 {
-		input.VisibilityTimeout = aws.Int64(int64(visibilityTimeoutS))
+	if visibilityTimeout != 0 {
+		input.VisibilityTimeout = aws.Int64(int64(visibilityTimeout.Seconds()))
 	}
 
 	for {

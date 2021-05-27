@@ -2,6 +2,7 @@ package hedwig
 
 import (
 	"context"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -46,7 +47,7 @@ type ConsumerCallback func(ctx context.Context, payload []byte, attributes map[s
 type IBackend interface {
 	// Receive messages from configured queue(s) and provide it through the callback. This should run indefinitely
 	// until the context is cancelled. Provider metadata should include all info necessary to ack/nack a message.
-	Receive(ctx context.Context, numMessages uint32, visibilityTimeoutS uint32, callback ConsumerCallback) error
+	Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback ConsumerCallback) error
 
 	// NackMessage nacks a message on the queue
 	NackMessage(ctx context.Context, providerMetadata interface{}) error
