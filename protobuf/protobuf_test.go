@@ -4,15 +4,14 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/protobuf/types/known/anypb"
-	"google.golang.org/protobuf/types/known/timestamppb"
-
 	"github.com/Masterminds/semver"
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/cloudchacho/hedwig-go"
 	"github.com/cloudchacho/hedwig-go/protobuf"
