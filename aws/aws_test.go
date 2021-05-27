@@ -125,7 +125,7 @@ func (fs *fakeSNS) PublishWithContext(ctx aws.Context, in *sns.PublishInput, opt
 func (s *BackendTestSuite) TestReceive() {
 	ctx, cancel := context.WithCancel(context.Background())
 	numMessages := uint32(10)
-	visibilityTimeoutS := uint32(10)
+	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
 	queueURL := "https://sqs.us-east-1.amazonaws.com/686176732873/" + queueName
 	queueInput := &sqs.GetQueueUrlInput{
@@ -141,7 +141,7 @@ func (s *BackendTestSuite) TestReceive() {
 		QueueUrl:              aws.String(queueURL),
 		AttributeNames:        []*string{aws.String(sqs.QueueAttributeNameAll)},
 		MessageAttributeNames: []*string{aws.String(sqs.QueueAttributeNameAll)},
-		VisibilityTimeout:     aws.Int64(int64(visibilityTimeoutS)),
+		VisibilityTimeout:     aws.Int64(int64(visibilityTimeout.Seconds())),
 		MaxNumberOfMessages:   aws.Int64(int64(numMessages)),
 		WaitTimeSeconds:       aws.Int64(sqsWaitTimeoutSeconds),
 	}
@@ -184,10 +184,10 @@ func (s *BackendTestSuite) TestReceive() {
 	receiveOutput := &sqs.ReceiveMessageOutput{
 		Messages: []*sqs.Message{&sqsMessage, &sqsMessage2},
 	}
-	s.fakeSQS.On("ReceiveMessageWithContext", ctx, receiveInput, []request.Option(nil)).
+	s.fakeSQS.On("ReceiveMessageWithContext", mock.AnythingOfType("*context.cancelCtx"), receiveInput, []request.Option(nil)).
 		Return(receiveOutput, nil).
 		Once()
-	s.fakeSQS.On("ReceiveMessageWithContext", ctx, receiveInput, []request.Option(nil)).
+	s.fakeSQS.On("ReceiveMessageWithContext", mock.AnythingOfType("*context.cancelCtx"), receiveInput, []request.Option(nil)).
 		Return(&sqs.ReceiveMessageOutput{}, nil)
 
 	payload := []byte(`{"vehicle_id": "C_123"}`)
@@ -200,7 +200,7 @@ func (s *BackendTestSuite) TestReceive() {
 		SentTime:         sentTime.UTC(),
 		ReceiveCount:     receiveCount,
 	}
-	s.fakeConsumerCallback.On("Callback", ctx, payload, attributes, providerMetadata).
+	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload, attributes, providerMetadata).
 		Return().
 		Once()
 	payload2 := []byte("\xbd\xb2\x3d\xbc\x20\xe2\x8c\x98")
@@ -208,7 +208,7 @@ func (s *BackendTestSuite) TestReceive() {
 		"foo":             "bar",
 		"hedwig_encoding": "base64",
 	}
-	s.fakeConsumerCallback.On("Callback", ctx, payload2, attributes2, providerMetadata).
+	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload2, attributes2, providerMetadata).
 		Return().
 		Once().
 		// force method to return after just one loop
@@ -216,7 +216,7 @@ func (s *BackendTestSuite) TestReceive() {
 
 	ch := make(chan bool)
 	go func() {
-		err := s.backend.Receive(ctx, numMessages, visibilityTimeoutS, s.fakeConsumerCallback.Callback)
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
 		s.EqualError(err, "context canceled")
 		ch <- true
 		close(ch)
@@ -234,7 +234,7 @@ func (s *BackendTestSuite) TestReceive() {
 func (s *BackendTestSuite) TestReceiveFailedNonUTF8Decoding() {
 	ctx, cancel := context.WithCancel(context.Background())
 	numMessages := uint32(10)
-	visibilityTimeoutS := uint32(10)
+	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
 	queueURL := "https://sqs.us-east-1.amazonaws.com/686176732873/" + queueName
 	queueInput := &sqs.GetQueueUrlInput{
@@ -250,7 +250,7 @@ func (s *BackendTestSuite) TestReceiveFailedNonUTF8Decoding() {
 		QueueUrl:              aws.String(queueURL),
 		AttributeNames:        []*string{aws.String(sqs.QueueAttributeNameAll)},
 		MessageAttributeNames: []*string{aws.String(sqs.QueueAttributeNameAll)},
-		VisibilityTimeout:     aws.Int64(int64(visibilityTimeoutS)),
+		VisibilityTimeout:     aws.Int64(int64(visibilityTimeout.Seconds())),
 		MaxNumberOfMessages:   aws.Int64(int64(numMessages)),
 		WaitTimeSeconds:       aws.Int64(sqsWaitTimeoutSeconds),
 	}
@@ -280,7 +280,7 @@ func (s *BackendTestSuite) TestReceiveFailedNonUTF8Decoding() {
 
 	ch := make(chan bool)
 	go func() {
-		err := s.backend.Receive(ctx, numMessages, visibilityTimeoutS, s.fakeConsumerCallback.Callback)
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
 		s.EqualError(err, "context canceled")
 		ch <- true
 		close(ch)
@@ -301,7 +301,7 @@ func (s *BackendTestSuite) TestReceiveFailedNonUTF8Decoding() {
 func (s *BackendTestSuite) TestReceiveNoMessages() {
 	ctx, cancel := context.WithCancel(context.Background())
 	numMessages := uint32(10)
-	visibilityTimeoutS := uint32(10)
+	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
 	queueURL := "https://sqs.us-east-1.amazonaws.com/686176732873/" + queueName
 	queueInput := &sqs.GetQueueUrlInput{
@@ -316,7 +316,7 @@ func (s *BackendTestSuite) TestReceiveNoMessages() {
 		QueueUrl:              aws.String(queueURL),
 		AttributeNames:        []*string{aws.String(sqs.QueueAttributeNameAll)},
 		MessageAttributeNames: []*string{aws.String(sqs.QueueAttributeNameAll)},
-		VisibilityTimeout:     aws.Int64(int64(visibilityTimeoutS)),
+		VisibilityTimeout:     aws.Int64(int64(visibilityTimeout.Seconds())),
 		MaxNumberOfMessages:   aws.Int64(int64(numMessages)),
 		WaitTimeSeconds:       aws.Int64(sqsWaitTimeoutSeconds),
 	}
@@ -325,7 +325,7 @@ func (s *BackendTestSuite) TestReceiveNoMessages() {
 
 	ch := make(chan bool)
 	go func() {
-		err := s.backend.Receive(ctx, numMessages, visibilityTimeoutS, s.fakeConsumerCallback.Callback)
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
 		s.EqualError(err, "context canceled")
 		ch <- true
 		close(ch)
@@ -343,7 +343,7 @@ func (s *BackendTestSuite) TestReceiveNoMessages() {
 func (s *BackendTestSuite) TestReceiveError() {
 	ctx := context.Background()
 	numMessages := uint32(10)
-	visibilityTimeoutS := uint32(10)
+	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
 	queueURL := "https://sqs.us-east-1.amazonaws.com/686176732873/" + queueName
 	queueInput := &sqs.GetQueueUrlInput{
@@ -358,7 +358,7 @@ func (s *BackendTestSuite) TestReceiveError() {
 		QueueUrl:              aws.String(queueURL),
 		AttributeNames:        []*string{aws.String(sqs.QueueAttributeNameAll)},
 		MessageAttributeNames: []*string{aws.String(sqs.QueueAttributeNameAll)},
-		VisibilityTimeout:     aws.Int64(int64(visibilityTimeoutS)),
+		VisibilityTimeout:     aws.Int64(int64(visibilityTimeout.Seconds())),
 		MaxNumberOfMessages:   aws.Int64(int64(numMessages)),
 		WaitTimeSeconds:       aws.Int64(sqsWaitTimeoutSeconds),
 	}
@@ -367,7 +367,7 @@ func (s *BackendTestSuite) TestReceiveError() {
 
 	ch := make(chan bool)
 	go func() {
-		err := s.backend.Receive(ctx, numMessages, visibilityTimeoutS, s.fakeConsumerCallback.Callback)
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
 		s.EqualError(err, "failed to receive SQS message: no internet")
 		ch <- true
 		close(ch)
@@ -383,7 +383,7 @@ func (s *BackendTestSuite) TestReceiveError() {
 func (s *BackendTestSuite) TestReceiveGetQueueError() {
 	ctx := context.Background()
 	numMessages := uint32(10)
-	visibilityTimeoutS := uint32(10)
+	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
 	queueInput := &sqs.GetQueueUrlInput{
 		QueueName: &queueName,
@@ -391,7 +391,7 @@ func (s *BackendTestSuite) TestReceiveGetQueueError() {
 	s.fakeSQS.On("GetQueueUrlWithContext", ctx, queueInput, mock.Anything).
 		Return((*sqs.GetQueueUrlOutput)(nil), errors.New("no internet"))
 
-	err := s.backend.Receive(ctx, numMessages, visibilityTimeoutS, s.fakeConsumerCallback.Callback)
+	err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
 	s.EqualError(err, "failed to get SQS Queue URL: no internet")
 
 	s.fakeSQS.AssertExpectations(s.T())
@@ -401,7 +401,7 @@ func (s *BackendTestSuite) TestReceiveGetQueueError() {
 func (s *BackendTestSuite) TestReceiveShutdown() {
 	ctx, _ := context.WithDeadline(context.Background(), time.Now().Add(time.Second*1))
 	numMessages := uint32(10)
-	visibilityTimeoutS := uint32(10)
+	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
 	queueURL := "https://sqs.us-east-1.amazonaws.com/686176732873/" + queueName
 	queueInput := &sqs.GetQueueUrlInput{
@@ -414,7 +414,7 @@ func (s *BackendTestSuite) TestReceiveShutdown() {
 
 	ch := make(chan bool)
 	go func() {
-		err := s.backend.Receive(ctx, numMessages, visibilityTimeoutS, s.fakeConsumerCallback.Callback)
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
 		s.EqualError(err, "context shutting down")
 		ch <- true
 		close(ch)
@@ -430,7 +430,7 @@ func (s *BackendTestSuite) TestReceiveShutdown() {
 func (s *BackendTestSuite) TestReceiveMissingAttributes() {
 	ctx, cancel := context.WithCancel(context.Background())
 	numMessages := uint32(10)
-	visibilityTimeoutS := uint32(10)
+	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
 	queueURL := "https://sqs.us-east-1.amazonaws.com/686176732873/" + queueName
 	queueInput := &sqs.GetQueueUrlInput{
@@ -445,7 +445,7 @@ func (s *BackendTestSuite) TestReceiveMissingAttributes() {
 		QueueUrl:              aws.String(queueURL),
 		AttributeNames:        []*string{aws.String(sqs.QueueAttributeNameAll)},
 		MessageAttributeNames: []*string{aws.String(sqs.QueueAttributeNameAll)},
-		VisibilityTimeout:     aws.Int64(int64(visibilityTimeoutS)),
+		VisibilityTimeout:     aws.Int64(int64(visibilityTimeout.Seconds())),
 		MaxNumberOfMessages:   aws.Int64(int64(numMessages)),
 		WaitTimeSeconds:       aws.Int64(sqsWaitTimeoutSeconds),
 	}
@@ -468,10 +468,10 @@ func (s *BackendTestSuite) TestReceiveMissingAttributes() {
 	receiveOutput := &sqs.ReceiveMessageOutput{
 		Messages: []*sqs.Message{&sqsMessage},
 	}
-	s.fakeSQS.On("ReceiveMessageWithContext", ctx, receiveInput, []request.Option(nil)).
+	s.fakeSQS.On("ReceiveMessageWithContext", mock.AnythingOfType("*context.cancelCtx"), receiveInput, []request.Option(nil)).
 		Return(receiveOutput, nil).
 		Once()
-	s.fakeSQS.On("ReceiveMessageWithContext", ctx, receiveInput, []request.Option(nil)).
+	s.fakeSQS.On("ReceiveMessageWithContext", mock.AnythingOfType("*context.cancelCtx"), receiveInput, []request.Option(nil)).
 		Return(&sqs.ReceiveMessageOutput{}, nil)
 
 	payload := []byte(`{"vehicle_id": "C_123"}`)
@@ -484,13 +484,13 @@ func (s *BackendTestSuite) TestReceiveMissingAttributes() {
 		SentTime:         time.Time{},
 		ReceiveCount:     -1,
 	}
-	s.fakeConsumerCallback.On("Callback", ctx, payload, attributes, providerMetadata).
+	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload, attributes, providerMetadata).
 		Return().
 		Once()
 
 	ch := make(chan bool)
 	go func() {
-		err := s.backend.Receive(ctx, numMessages, visibilityTimeoutS, s.fakeConsumerCallback.Callback)
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
 		s.EqualError(err, "context canceled")
 		ch <- true
 		close(ch)

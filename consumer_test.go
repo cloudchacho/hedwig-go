@@ -66,8 +66,8 @@ type fakeBackend struct {
 	mock.Mock
 }
 
-func (b *fakeBackend) Receive(ctx context.Context, numMessages uint32, visibilityTimeoutS uint32, callback ConsumerCallback) error {
-	args := b.Called(ctx, numMessages, visibilityTimeoutS, callback)
+func (b *fakeBackend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback ConsumerCallback) error {
+	args := b.Called(ctx, numMessages, visibilityTimeout, callback)
 	return args.Error(0)
 }
 
@@ -227,11 +227,11 @@ func (s *ConsumerTestSuite) TestProcessMessageAckFailure() {
 func (s *ConsumerTestSuite) TestListenForMessages() {
 	ctx := context.Background()
 	numMessages := uint32(10)
-	visibilityTimeoutS := uint32(20)
-	s.backend.On("Receive", ctx, numMessages, visibilityTimeoutS, mock.AnythingOfType("ConsumerCallback")).
+	visibilityTimeout := time.Second * 20
+	s.backend.On("Receive", ctx, numMessages, visibilityTimeout, mock.AnythingOfType("ConsumerCallback")).
 		Return(context.Canceled).
 		After(500 * time.Millisecond)
-	err := s.consumer.ListenForMessages(ctx, ListenRequest{numMessages, visibilityTimeoutS})
+	err := s.consumer.ListenForMessages(ctx, ListenRequest{numMessages, visibilityTimeout})
 	assert.EqualError(s.T(), err, "context canceled")
 	s.backend.AssertExpectations(s.T())
 }
@@ -263,7 +263,8 @@ func (s *ConsumerTestSuite) SetupTest() {
 	backend := &fakeBackend{}
 	validator := &fakeValidator{}
 
-	s.consumer = NewQueueConsumer(settings, backend, validator).(*queueConsumer)
+	s.consumer = NewQueueConsumer(settings, backend, nil).(*queueConsumer)
+	s.consumer.validator = validator
 	s.backend = backend
 	s.callback = callback
 	s.validator = validator

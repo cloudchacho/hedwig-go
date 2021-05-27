@@ -6,14 +6,15 @@ package hedwig
 
 import (
 	"context"
+	"time"
 
 	"github.com/pkg/errors"
 )
 
 // ListenRequest represents a request to listen for messages
 type ListenRequest struct {
-	NumMessages        uint32 // default 1
-	VisibilityTimeoutS uint32 // defaults to queue configuration
+	NumMessages       uint32        // default 1
+	VisibilityTimeout time.Duration // defaults to queue configuration
 }
 
 // IQueueConsumer represents a hedwig queue consumer
@@ -80,17 +81,17 @@ func (c *queueConsumer) ListenForMessages(ctx context.Context, request ListenReq
 		request.NumMessages = 1
 	}
 
-	return c.backend.Receive(ctx, request.NumMessages, request.VisibilityTimeoutS, c.processMessage)
+	return c.backend.Receive(ctx, request.NumMessages, request.VisibilityTimeout, c.processMessage)
 }
 
-func NewQueueConsumer(settings *Settings, backend IBackend, validator IMessageValidator) IQueueConsumer {
+func NewQueueConsumer(settings *Settings, backend IBackend, encoder IEncoder) IQueueConsumer {
 	settings.initDefaults()
 
 	return &queueConsumer{
 		consumer: consumer{
 			backend:   backend,
 			settings:  settings,
-			validator: validator,
+			validator: NewMessageValidator(settings, encoder),
 		},
 	}
 }

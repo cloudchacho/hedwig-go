@@ -60,7 +60,7 @@ func (g *gcpBackend) Publish(ctx context.Context, message *hedwig.Message, paylo
 
 // Receive messages from configured queue(s) and provide it through the callback. This should run indefinitely
 // until the context is cancelled. Provider metadata should include all info necessary to ack/nack a message.
-func (g *gcpBackend) Receive(ctx context.Context, numMessages uint32, visibilityTimeoutS uint32, callback hedwig.ConsumerCallback) error {
+func (g *gcpBackend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback hedwig.ConsumerCallback) error {
 	err := g.ensureClient(ctx)
 	if err != nil {
 		return err
@@ -81,8 +81,8 @@ func (g *gcpBackend) Receive(ctx context.Context, numMessages uint32, visibility
 		pubsubSubscription := g.client.SubscriptionInProject(
 			fmt.Sprintf("hedwig-%s", subscriptionProject.Subscription), subscriptionProject.ProjectID)
 		pubsubSubscription.ReceiveSettings.MaxOutstandingMessages = int(numMessages)
-		if visibilityTimeoutS != 0 {
-			pubsubSubscription.ReceiveSettings.MaxExtensionPeriod = time.Duration(visibilityTimeoutS) * time.Second
+		if visibilityTimeout != 0 {
+			pubsubSubscription.ReceiveSettings.MaxExtensionPeriod = visibilityTimeout
 		} else {
 			pubsubSubscription.ReceiveSettings.MaxExtensionPeriod = defaultVisibilityTimeoutS
 		}
