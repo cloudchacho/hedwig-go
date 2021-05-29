@@ -59,7 +59,7 @@ func (f *fakeEncoder) ExtractData(messagePayload []byte, attributes map[string]s
 	return args.Get(0).(MetaAttributes), args.Get(1), args.Error(2)
 }
 
-func (f fakeEncoder) DecodeData(messageType string, version *semver.Version, data interface{}) (interface{}, error) {
+func (f *fakeEncoder) DecodeData(messageType string, version *semver.Version, data interface{}) (interface{}, error) {
 	args := f.Called(messageType, version, data)
 	return args.Get(0), args.Error(1)
 }
@@ -340,7 +340,6 @@ type ValidatorTestSuite struct {
 	suite.Suite
 	validator  *messageValidator
 	backend    *fakeBackend
-	callback   *fakeCallback
 	settings   *Settings
 	encoder    *fakeEncoder
 	attributes map[string]string

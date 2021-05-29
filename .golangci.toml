@@ -1,0 +1,13 @@
+[run]
+
+skip-files = ".*\\.pb\\.go$"
+
+timeout = "5m"
+
+[linters-settings.misspell]
+
+locale = "US"
+
+[linters]
+
+enable = ["misspell"]
