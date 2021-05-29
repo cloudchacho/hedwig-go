@@ -89,7 +89,6 @@ type PublisherTestSuite struct {
 	publisher *Publisher
 	backend   *fakeBackend
 	validator *fakeValidator
-	callback  *fakeCallback
 	settings  *Settings
 }
 
