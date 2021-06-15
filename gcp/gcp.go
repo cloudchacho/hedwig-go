@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"golang.org/x/sync/errgroup"
-
 	"cloud.google.com/go/pubsub"
 	"github.com/pkg/errors"
+	"golang.org/x/oauth2/google"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/cloudchacho/hedwig-go"
 )
@@ -120,6 +120,17 @@ func (g *gcpBackend) AckMessage(ctx context.Context, providerMetadata interface{
 }
 
 func (g *gcpBackend) ensureClient(ctx context.Context) error {
+	if g.settings.GoogleCloudProject == "" {
+		creds, err := google.FindDefaultCredentials(ctx)
+		if err != nil {
+			return errors.Wrap(
+				err, "unable to discover google cloud project setting, either pass explicitly, or fix runtime environment")
+		} else if creds.ProjectID == "" {
+			return errors.New(
+				"unable to discover google cloud project setting, either pass explicitly, or fix runtime environment")
+		}
+		g.settings.GoogleCloudProject = creds.ProjectID
+	}
 	if g.client != nil {
 		return nil
 	}
