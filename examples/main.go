@@ -34,7 +34,7 @@ func settings(isProtobuf bool, publisherBackend string) *hedwig.Settings {
 		CallbackRegistry:   callbackRegistry,
 		PublisherName:      "MYAPP",
 		QueueName:          queueName,
-		Subscriptions:      []string{"dev-myapp-dev-user-created-v1"},
+		Subscriptions:      []string{"dev-user-created-v1"},
 		MessageRouting: map[hedwig.MessageTypeMajorVersion]string{
 			hedwig.MessageTypeMajorVersion{
 				MessageType:  "user-created",
