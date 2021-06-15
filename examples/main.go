@@ -119,9 +119,8 @@ func backend(settings *hedwig.Settings, publisherBackend string) hedwig.IBackend
 
 func runConsumer(isProtobuf bool, publisherBackend string) {
 	settings := settings(isProtobuf, publisherBackend)
-	validator := hedwig.NewMessageValidator(settings, encoder(isProtobuf))
 	backend := backend(settings, publisherBackend)
-	consumer := hedwig.NewQueueConsumer(settings, backend, validator)
+	consumer := hedwig.NewQueueConsumer(settings, backend, encoder(isProtobuf))
 	err := consumer.ListenForMessages(context.Background(), hedwig.ListenRequest{})
 	if err != nil {
 		panic(fmt.Sprintf("Failed to consume messages: %v", err))

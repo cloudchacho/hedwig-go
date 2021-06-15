@@ -11,11 +11,7 @@ proto-compile:
 
 mod-tidy:
 	go mod tidy
-	cd aws && go mod tidy
 	cd examples && go mod tidy
-	cd gcp && go mod tidy
-	cd jsonschema && go mod tidy
-	cd protobuf && go mod tidy
 
 clean:
 	find . -name coverage.txt -delete

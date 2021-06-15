@@ -15,9 +15,5 @@ setup_pubsub_emulator() {
   $(gcloud beta emulators pubsub env-init)
 }
 
-go test -cover -coverprofile coverage.txt -v -race ./...
-cd aws && go test -cover -coverprofile coverage.txt -v -race ./... && cd -
-cd jsonschema && go test -cover -coverprofile coverage.txt -v -race ./... && cd -
-cd protobuf && go test -cover -coverprofile coverage.txt -v -race ./... && cd -
 setup_pubsub_emulator
-cd gcp && go test -cover -coverprofile coverage.txt -v -race ./... && cd -
+go test -cover -coverprofile coverage.txt -v -race ./...
