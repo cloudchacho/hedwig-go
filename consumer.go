@@ -38,19 +38,31 @@ type queueConsumer struct {
 }
 
 func (c *queueConsumer) processMessage(ctx context.Context, payload []byte, attributes map[string]string, providerMetadata interface{}) {
+	var acked bool
+	loggingFields := LoggingFields{"message_body": payload}
+
+	// must ack or nack message, otherwise receive call never returns even on context cancelation
+	defer func() {
+		if !acked {
+			err := c.backend.NackMessage(ctx, providerMetadata)
+			if err != nil {
+				c.settings.GetLogger(ctx).Error(err, "Failed to nack message", loggingFields)
+			}
+		}
+	}()
 
 	message, err := c.validator.Deserialize(payload, attributes, providerMetadata)
 	if err != nil {
-		loggingFields := LoggingFields{"message_body": payload}
 		c.settings.GetLogger(ctx).Error(err, "invalid message, unable to unmarshal", loggingFields)
 		return
 	}
+
+	loggingFields = LoggingFields{"message_id": message.ID}
 
 	callbackKey := MessageTypeMajorVersion{message.Type, uint(message.DataSchemaVersion.Major())}
 	var callback CallbackFunction
 	var ok bool
 	if callback, ok = c.settings.CallbackRegistry[callbackKey]; !ok {
-		loggingFields := LoggingFields{"message_body": payload}
 		msg := "no callback defined for message"
 		c.settings.GetLogger(ctx).Error(errors.New(msg), msg, loggingFields)
 		return
@@ -61,17 +73,14 @@ func (c *queueConsumer) processMessage(ctx context.Context, payload []byte, attr
 	case nil:
 		err := c.backend.AckMessage(ctx, providerMetadata)
 		if err != nil {
-			c.settings.GetLogger(ctx).Error(err, "Failed to ack message", LoggingFields{"message_id": message.ID})
+			c.settings.GetLogger(ctx).Error(err, "Failed to ack message", loggingFields)
+		} else {
+			acked = true
 		}
-		return
 	case ErrRetry:
-		c.settings.GetLogger(ctx).Debug("Retrying due to exception", LoggingFields{"message_id": message.ID})
+		c.settings.GetLogger(ctx).Debug("Retrying due to exception", loggingFields)
 	default:
-		c.settings.GetLogger(ctx).Error(err, "Retrying due to unknown exception", LoggingFields{"message_id": message.ID})
-	}
-	err = c.backend.NackMessage(ctx, providerMetadata)
-	if err != nil {
-		c.settings.GetLogger(ctx).Error(err, "Failed to nack message", LoggingFields{"message_id": message.ID})
+		c.settings.GetLogger(ctx).Error(err, "Retrying due to unknown exception", loggingFields)
 	}
 }
 
