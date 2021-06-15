@@ -68,18 +68,24 @@ func (g *gcpBackend) Receive(ctx context.Context, numMessages uint32, visibility
 
 	defer g.client.Close()
 
-	subscriptionProjects := []hedwig.SubscriptionProject{}
-	subscriptionProjects = append(subscriptionProjects, g.settings.SubscriptionsCrossProject...)
-	for _, subscription := range g.settings.Subscriptions {
-		subscriptionProjects = append(subscriptionProjects, hedwig.SubscriptionProject{subscription, g.settings.GoogleCloudProject})
+	subscriptions := []string{}
+	// all subscriptions live in an app's project, but cross-project subscriptions are named differently
+	for _, subscription := range g.settings.SubscriptionsCrossProject {
+		subscriptionName := fmt.Sprintf("hedwig-%s-%s-%s", g.settings.QueueName, subscription.ProjectID, subscription.Subscription)
+		subscriptions = append(subscriptions, subscriptionName)
 	}
-	subscriptionProjects = append(subscriptionProjects, hedwig.SubscriptionProject{g.settings.QueueName, g.settings.GoogleCloudProject})
+	for _, subscription := range g.settings.Subscriptions {
+		subscriptionName := fmt.Sprintf("hedwig-%s-%s", g.settings.QueueName, subscription)
+		subscriptions = append(subscriptions, subscriptionName)
+	}
+	// main queue for DLQ re-queued messages
+	subscriptionName := fmt.Sprintf("hedwig-%s", g.settings.QueueName)
+	subscriptions = append(subscriptions, subscriptionName)
 
 	group, gctx := errgroup.WithContext(ctx)
 
-	for _, subscriptionProject := range subscriptionProjects {
-		pubsubSubscription := g.client.SubscriptionInProject(
-			fmt.Sprintf("hedwig-%s", subscriptionProject.Subscription), subscriptionProject.ProjectID)
+	for _, subscription := range subscriptions {
+		pubsubSubscription := g.client.Subscription(subscription)
 		pubsubSubscription.ReceiveSettings.MaxOutstandingMessages = int(numMessages)
 		if visibilityTimeout != 0 {
 			pubsubSubscription.ReceiveSettings.MaxExtensionPeriod = visibilityTimeout
@@ -120,7 +126,8 @@ func (g *gcpBackend) AckMessage(ctx context.Context, providerMetadata interface{
 }
 
 func (g *gcpBackend) ensureClient(ctx context.Context) error {
-	if g.settings.GoogleCloudProject == "" {
+	googleCloudProject := g.settings.GoogleCloudProject
+	if googleCloudProject == "" {
 		creds, err := google.FindDefaultCredentials(ctx)
 		if err != nil {
 			return errors.Wrap(
@@ -129,12 +136,12 @@ func (g *gcpBackend) ensureClient(ctx context.Context) error {
 			return errors.New(
 				"unable to discover google cloud project setting, either pass explicitly, or fix runtime environment")
 		}
-		g.settings.GoogleCloudProject = creds.ProjectID
+		googleCloudProject = creds.ProjectID
 	}
 	if g.client != nil {
 		return nil
 	}
-	client, err := pubsub.NewClient(context.Background(), g.settings.GoogleCloudProject)
+	client, err := pubsub.NewClient(context.Background(), googleCloudProject)
 	if err != nil {
 		return err
 	}
