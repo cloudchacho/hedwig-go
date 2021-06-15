@@ -142,6 +142,7 @@ func (s *BackendTestSuite) TestReceiveError() {
 	visibilityTimeout := time.Second * 10
 
 	s.settings.QueueName = "does-not-exist"
+	s.settings.Subscriptions = nil
 
 	ch := make(chan bool)
 	go func() {
@@ -342,7 +343,7 @@ func (s *BackendTestSuite) SetupTest() {
 				MajorVersion: 1,
 			}: "dev-user-created-v1",
 		},
-		Subscriptions:   []string{"dev-myapp-dev-user-created-v1"},
+		Subscriptions:   []string{"dev-user-created-v1"},
 		ShutdownTimeout: time.Second * 10,
 	}
 	fakeMessageCallback := &fakeConsumerCallback{}
