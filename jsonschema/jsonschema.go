@@ -130,12 +130,12 @@ func NewEncoderFromBytes(schemaFile []byte, dataRegistry hedwig.DataFactoryRegis
 	}
 
 	schemaMap := parsedSchema["schemas"].(map[string]interface{})
-	for schemaName, schemaVersionObj := range schemaMap {
+	for messageType, schemaVersionObj := range schemaMap {
 		schemaVersionMap := schemaVersionObj.(map[string]interface{})
 		for version, schema := range schemaVersionMap {
 			matches := schemaMajorVersionRegexp.FindStringSubmatch(version)
 			if matches == nil {
-				return nil, errors.Errorf("invalid version %s for %s", version, schemaName)
+				return nil, errors.Errorf("invalid version %s for %s", version, messageType)
 			}
 
 			majorVersionSigned, err := strconv.Atoi(matches[1])
@@ -159,7 +159,7 @@ func NewEncoderFromBytes(schemaFile []byte, dataRegistry hedwig.DataFactoryRegis
 
 			compiler.Extensions["x-version"] = xVersionsExt()
 
-			schemaURL := fmt.Sprintf("%s/schemas/%s/%s", encoder.schemaID, schemaName, version)
+			schemaURL := fmt.Sprintf("%s/schemas/%s/%s", encoder.schemaID, messageType, version)
 
 			err = compiler.AddResource(schemaURL, strings.NewReader(string(schemaByte)))
 			if err != nil {
@@ -179,17 +179,17 @@ func NewEncoderFromBytes(schemaFile []byte, dataRegistry hedwig.DataFactoryRegis
 			}
 
 			if value, ok := schema.Extensions[xVersionKey]; !ok {
-				return nil, errors.Errorf("Missing x-version from schema definition for %s", schemaName)
+				return nil, errors.Errorf("Missing x-version from schema definition for %s", messageType)
 			} else {
 				xVersion := value.(*semver.Version)
 				if xVersion.Major() != int64(majorVersion) {
 					return nil, errors.Errorf("Invalid x-version: %d.%d for: %s/%s",
-						xVersion.Major(), xVersion.Minor(), schemaName, version,
+						xVersion.Major(), xVersion.Minor(), messageType, version,
 					)
 				}
 			}
 
-			schemaKey := hedwig.MessageTypeMajorVersion{MessageType: schemaName, MajorVersion: majorVersion}
+			schemaKey := hedwig.MessageTypeMajorVersion{messageType, majorVersion}
 			encoder.compiledSchemaMap[schemaKey] = schema
 
 			msgTypesFound[schemaKey] = true

@@ -112,12 +112,12 @@ func NewMessageEncoder(protoMessages []protoreflect.Message) (hedwig.IEncoder, e
 			// will never happen, version was constructed by string formatting
 			return nil, err
 		}
-		messageTypeMajorVersion := hedwig.MessageTypeMajorVersion{MessageType: messageType, MajorVersion: majorVersion}
-		if _, ok := protoMessagesMap[messageTypeMajorVersion]; ok {
+		schemaKey := hedwig.MessageTypeMajorVersion{messageType, majorVersion}
+		if _, ok := protoMessagesMap[schemaKey]; ok {
 			return nil, errors.Errorf("duplicate message found for %s %d", messageType, majorVersion)
 		}
-		protoMessagesMap[messageTypeMajorVersion] = msg
-		versions[messageTypeMajorVersion] = version
+		protoMessagesMap[schemaKey] = msg
+		versions[schemaKey] = version
 	}
 	return &messageEncoder{protoMsgs: protoMessagesMap, versions: versions}, nil
 }
@@ -167,7 +167,7 @@ func (me *messageEncoder) EncodeData(data interface{}, useMessageTransport bool,
 
 // VerifyKnownMinorVersion checks that message version is known to us
 func (me *messageEncoder) VerifyKnownMinorVersion(messageType string, version *semver.Version) error {
-	protoMessageKey := hedwig.MessageTypeMajorVersion{MessageType: messageType, MajorVersion: uint(version.Major())}
+	protoMessageKey := hedwig.MessageTypeMajorVersion{messageType, uint(version.Major())}
 
 	if schemaVersion, ok := me.versions[protoMessageKey]; ok {
 		if schemaVersion.LessThan(version) {
@@ -228,7 +228,7 @@ func (me *messageEncoder) ExtractData(messagePayload []byte, attributes map[stri
 // Type of data must be *anypb.Any for containerized format or []byte for non-containerized format
 func (me *messageEncoder) DecodeData(messageType string, version *semver.Version, data interface{}) (interface{}, error) {
 	var ok bool
-	schemaKey := hedwig.MessageTypeMajorVersion{MessageType: messageType, MajorVersion: uint(version.Major())}
+	schemaKey := hedwig.MessageTypeMajorVersion{messageType, uint(version.Major())}
 	msgClass, ok := me.protoMsgs[schemaKey]
 	if !ok {
 		return nil, errors.Errorf("Proto message not found for: %s %d.%d", messageType, version.Major(), version.Minor())
