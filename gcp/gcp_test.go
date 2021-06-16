@@ -23,13 +23,6 @@ type fakeHedwigDataField struct {
 	VehicleID string `json:"vehicle_id"`
 }
 
-type fakeLog struct {
-	level   string
-	err     error
-	message string
-	fields  hedwig.LoggingFields
-}
-
 type fakeValidator struct {
 	mock.Mock
 }
@@ -91,7 +84,8 @@ func (s *BackendTestSuite) TestReceive() {
 	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload2, attributes2, mock.AnythingOfType("gcp.GCPMetadata")).
 		// message must be acked or Receive never returns
 		Run(func(args mock.Arguments) {
-			s.backend.AckMessage(ctx, args.Get(3))
+			err := s.backend.AckMessage(ctx, args.Get(3))
+			s.Require().NoError(err)
 		}).
 		Return().
 		Once().
@@ -195,12 +189,13 @@ func (s *BackendTestSuite) TestAck() {
 	s.NotEmpty(messageId)
 
 	rctx, cancel := context.WithCancel(ctx)
-	s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(rctx, func(_ context.Context, message *pubsub.Message) {
+	err = s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(rctx, func(_ context.Context, message *pubsub.Message) {
 		cancel()
 		s.Equal(message.Data, s.payload)
 		s.Equal(message.Attributes, s.attributes)
 		message.Ack()
 	})
+	s.NoError(err)
 
 	rctx, cancel = context.WithCancel(ctx)
 	ch := make(chan bool)
@@ -227,22 +222,24 @@ func (s *BackendTestSuite) TestNack() {
 	s.NotEmpty(messageId)
 
 	rctx, cancel := context.WithCancel(ctx)
-	s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(rctx, func(_ context.Context, message *pubsub.Message) {
+	err = s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(rctx, func(_ context.Context, message *pubsub.Message) {
 		cancel()
 		s.Equal(message.Data, s.payload)
 		s.Equal(message.Attributes, s.attributes)
 		s.Equal(*message.DeliveryAttempt, 1)
 		message.Nack()
 	})
+	s.NoError(err)
 
 	rctx, cancel = context.WithCancel(ctx)
-	s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(rctx, func(_ context.Context, message *pubsub.Message) {
+	err = s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(rctx, func(_ context.Context, message *pubsub.Message) {
 		cancel()
 		s.Equal(message.Data, s.payload)
 		s.Equal(message.Attributes, s.attributes)
 		s.GreaterOrEqual(*message.DeliveryAttempt, 2)
 		message.Ack()
 	})
+	s.NoError(err)
 }
 
 func (s *BackendTestSuite) TestNew() {

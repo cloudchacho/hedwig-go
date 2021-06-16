@@ -331,7 +331,7 @@ func TestInvalidSchemaNotMajorVersion(t *testing.T) {
 						"user_id"
 					],
 					"properties": {
-						"vehicle_id": {
+						"vehicle_id": {gcp/gcp_test.go:26
 							"type": "string"
 						},
 						"user_id": {

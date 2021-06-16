@@ -59,7 +59,7 @@ func (g *gcpBackend) Publish(ctx context.Context, message *hedwig.Message, paylo
 }
 
 // Receive messages from configured queue(s) and provide it through the callback. This should run indefinitely
-// until the context is cancelled. Provider metadata should include all info necessary to ack/nack a message.
+// until the context is canceled. Provider metadata should include all info necessary to ack/nack a message.
 func (g *gcpBackend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback hedwig.ConsumerCallback) error {
 	err := g.ensureClient(ctx)
 	if err != nil {

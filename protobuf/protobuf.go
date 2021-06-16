@@ -112,11 +112,12 @@ func NewMessageEncoder(protoMessages []protoreflect.Message) (hedwig.IEncoder, e
 			// will never happen, version was constructed by string formatting
 			return nil, err
 		}
-		if _, ok := protoMessagesMap[hedwig.MessageTypeMajorVersion{messageType, majorVersion}]; ok {
+		messageTypeMajorVersion := hedwig.MessageTypeMajorVersion{MessageType: messageType, MajorVersion: majorVersion}
+		if _, ok := protoMessagesMap[messageTypeMajorVersion]; ok {
 			return nil, errors.Errorf("duplicate message found for %s %d", messageType, majorVersion)
 		}
-		protoMessagesMap[hedwig.MessageTypeMajorVersion{messageType, majorVersion}] = msg
-		versions[hedwig.MessageTypeMajorVersion{messageType, majorVersion}] = version
+		protoMessagesMap[messageTypeMajorVersion] = msg
+		versions[messageTypeMajorVersion] = version
 	}
 	return &messageEncoder{protoMsgs: protoMessagesMap, versions: versions}, nil
 }
@@ -134,6 +135,10 @@ func (me *messageEncoder) EncodeData(data interface{}, useMessageTransport bool,
 
 	if !useMessageTransport {
 		anyMsg, err := anypb.New(dataTyped)
+		if err != nil {
+			// Unable to convert to bytes
+			return nil, err
+		}
 		container := &PayloadV1{
 			FormatVersion: fmt.Sprintf("%d.%d", metaAttrs.FormatVersion.Major(), metaAttrs.FormatVersion.Minor()),
 			Id:            metaAttrs.ID,

@@ -5,10 +5,10 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver"
-	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -81,6 +81,7 @@ func (s *EncoderTestSuite) TestEncodeDataContainerized() {
 	s.NoError(err)
 	serializedPayload := &protobuf.PayloadV1{}
 	err = proto.Unmarshal(payload, serializedPayload)
+	s.Require().NoError(err)
 	s.Equal(payloadMsg.String(), serializedPayload.String())
 }
 

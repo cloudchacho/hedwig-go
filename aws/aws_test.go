@@ -399,7 +399,8 @@ func (s *BackendTestSuite) TestReceiveGetQueueError() {
 }
 
 func (s *BackendTestSuite) TestReceiveShutdown() {
-	ctx, _ := context.WithDeadline(context.Background(), time.Now().Add(time.Second*1))
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second*1))
+	defer cancel()
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
