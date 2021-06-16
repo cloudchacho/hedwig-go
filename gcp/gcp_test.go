@@ -280,7 +280,7 @@ func (s *BackendTestSuite) TestNack() {
 		ch <- true
 		close(ch)
 	}()
-	time.Sleep(time.Millisecond * 100)
+	time.Sleep(time.Millisecond * 200)
 	cancel()
 
 	// wait for co-routine to finish
