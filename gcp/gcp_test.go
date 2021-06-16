@@ -270,8 +270,7 @@ func (s *BackendTestSuite) TestNack() {
 			err := s.backend.NackMessage(ctx, args.Get(3))
 			s.Require().NoError(err)
 		}).
-		Return().
-		Once()
+		Return()
 
 	ch := make(chan bool)
 	go func() {

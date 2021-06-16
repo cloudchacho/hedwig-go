@@ -46,12 +46,12 @@ func readContainerSchema() *jsonschema.Schema {
 	// Force to draft version 4
 	compiler.Draft = jsonschema.Draft4
 
-	err := compiler.AddResource("https://github.com/cloudchacho/hedwig-go/schemas#format_schema", strings.NewReader(containerSchemaStr))
+	err := compiler.AddResource("https://github.com/cloudchacho/hedwig-go/schemas/format_schema", strings.NewReader(containerSchemaStr))
 	if err != nil {
 		fmt.Println(err)
 		panic("unable to add schema resource - should never happen")
 	}
-	schema, err := compiler.Compile("https://github.com/cloudchacho/hedwig-go/schemas#/format_schema")
+	schema, err := compiler.Compile("https://github.com/cloudchacho/hedwig-go/schemas/format_schema")
 	if err != nil {
 		fmt.Println(err)
 		panic("unable to compile schema - should never happen")
