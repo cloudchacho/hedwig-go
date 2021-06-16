@@ -46,7 +46,7 @@ Create a JSON-schema and save as ``schema.json``:
 ```json
 
     {
-        "id": "https://hedwig.automatic.com/schema#",
+        "id": "https://github.com/cloudchacho/hedwig-go/schema#",
         "$schema": "http://json-schema.org/draft-04/schema",
         "schemas": {
             "email.send": {

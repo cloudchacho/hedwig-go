@@ -2,7 +2,7 @@ package jsonschema
 
 var containerSchemaStr = `
 {
-    "id": "https://hedwig.automatic.com/format_schema",
+    "id": "https://github.com/cloudchacho/hedwig-go/schemas#/format_schema",
     "$schema": "http://json-schema.org/draft-04/schema#",
     "description": "Schema for Hedwig messages",
     "required": [

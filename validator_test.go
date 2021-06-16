@@ -246,7 +246,7 @@ func (s *ValidatorTestSuite) TestEncodeMetaAttrs() {
 		Publisher:     "myapp",
 		Headers:       map[string]string{"foo": "bar"},
 		ID:            "123",
-		Schema:        "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
+		Schema:        "https://github.com/cloudchacho/hedwig-go/schema#/schemas/vehicle_created/1.0",
 		FormatVersion: semver.MustParse("1.0"),
 	}
 	attributes := s.validator.encodeMetaAttributes(metaAttrs)
@@ -255,7 +255,7 @@ func (s *ValidatorTestSuite) TestEncodeMetaAttrs() {
 		"hedwig_publisher":         "myapp",
 		"foo":                      "bar",
 		"hedwig_id":                "123",
-		"hedwig_schema":            "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
+		"hedwig_schema":            "https://github.com/cloudchacho/hedwig-go/schema#/schemas/vehicle_created/1.0",
 		"hedwig_format_version":    "1.0",
 	})
 
@@ -265,7 +265,7 @@ func (s *ValidatorTestSuite) TestEncodeMetaAttrs() {
 		"hedwig_message_timestamp": "1621550514123",
 		"hedwig_publisher":         "myapp",
 		"hedwig_id":                "123",
-		"hedwig_schema":            "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
+		"hedwig_schema":            "https://github.com/cloudchacho/hedwig-go/schema#/schemas/vehicle_created/1.0",
 		"hedwig_format_version":    "1.0",
 	})
 }
@@ -276,7 +276,7 @@ func (s *ValidatorTestSuite) TestDecodeMetaAttrs() {
 		"hedwig_publisher":         "myapp",
 		"foo":                      "bar",
 		"hedwig_id":                "123",
-		"hedwig_schema":            "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
+		"hedwig_schema":            "https://github.com/cloudchacho/hedwig-go/schema#/schemas/vehicle_created/1.0",
 		"hedwig_format_version":    "1.0",
 	}
 	metaAttrs, err := s.validator.decodeMetaAttributes(attributes)
@@ -286,7 +286,7 @@ func (s *ValidatorTestSuite) TestDecodeMetaAttrs() {
 		Publisher:     "myapp",
 		Headers:       map[string]string{"foo": "bar"},
 		ID:            "123",
-		Schema:        "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
+		Schema:        "https://github.com/cloudchacho/hedwig-go/schema#/schemas/vehicle_created/1.0",
 		FormatVersion: semver.MustParse("1.0"),
 	})
 }
@@ -297,7 +297,7 @@ func (s *ValidatorTestSuite) TestDecodeMetaAttrsValidation() {
 		"hedwig_publisher":         "myapp",
 		"foo":                      "bar",
 		"hedwig_id":                "123",
-		"hedwig_schema":            "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
+		"hedwig_schema":            "https://github.com/cloudchacho/hedwig-go/schema#/schemas/vehicle_created/1.0",
 		"hedwig_format_version":    "1.0",
 	}
 	tests := map[string]struct {

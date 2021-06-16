@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -16,7 +17,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/aws/aws-sdk-go/service/sqs/sqsiface"
 	"github.com/pkg/errors"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/cloudchacho/hedwig-go"
 )
@@ -148,55 +148,61 @@ func (a *awsBackend) Receive(ctx context.Context, numMessages uint32, visibility
 			if err != nil {
 				return errors.Wrap(err, "failed to receive SQS message")
 			}
-			group, gctx := errgroup.WithContext(ctx)
+			wg := sync.WaitGroup{}
 			for i := range out.Messages {
-				queueMessage := out.Messages[i]
-				group.Go(func() error {
-					attributes := map[string]string{}
-					for k, v := range queueMessage.MessageAttributes {
-						attributes[k] = *v.StringValue
-					}
-					var firstReceiveTime time.Time
-					if firstReceiveTimestamp, err := strconv.Atoi(*queueMessage.Attributes[sqs.MessageSystemAttributeNameApproximateFirstReceiveTimestamp]); err != nil {
-						firstReceiveTime = time.Time{}
-					} else {
-						firstReceiveTime = time.Unix(0, int64(time.Duration(firstReceiveTimestamp)*time.Millisecond)).UTC()
-					}
-					var sentTime time.Time
-					if sentTimestamp, err := strconv.Atoi(*queueMessage.Attributes[sqs.MessageSystemAttributeNameSentTimestamp]); err != nil {
-						sentTime = time.Time{}
-					} else {
-						sentTime = time.Unix(0, int64(time.Duration(sentTimestamp)*time.Millisecond)).UTC()
-					}
-					receiveCount, err := strconv.Atoi(*queueMessage.Attributes[sqs.MessageSystemAttributeNameApproximateReceiveCount])
-					if err != nil {
-						receiveCount = -1
-					}
-					metadata := AWSMetadata{
-						*queueMessage.ReceiptHandle,
-						firstReceiveTime,
-						sentTime,
-						receiveCount,
-					}
-					payload := []byte(*queueMessage.Body)
-					if encoding, ok := attributes["hedwig_encoding"]; ok && encoding == "base64" {
-						payload, err = base64.StdEncoding.DecodeString(string(payload))
-						if err != nil {
-							a.settings.GetLogger(gctx).Error(
-								err,
-								"Invalid message payload - couldn't decode using base64",
-								hedwig.LoggingFields{"message_id": queueMessage.MessageId},
-							)
-							return nil
+				select {
+				case <-ctx.Done():
+					wg.Wait()
+					// if context was canceled, signal appropriately
+					return ctx.Err()
+				default:
+					wg.Add(1)
+					queueMessage := out.Messages[i]
+					go func() {
+						defer wg.Done()
+						attributes := map[string]string{}
+						for k, v := range queueMessage.MessageAttributes {
+							attributes[k] = *v.StringValue
 						}
-					}
-					callback(gctx, payload, attributes, metadata)
-					return nil
-				})
+						var firstReceiveTime time.Time
+						if firstReceiveTimestamp, err := strconv.Atoi(*queueMessage.Attributes[sqs.MessageSystemAttributeNameApproximateFirstReceiveTimestamp]); err != nil {
+							firstReceiveTime = time.Time{}
+						} else {
+							firstReceiveTime = time.Unix(0, int64(time.Duration(firstReceiveTimestamp)*time.Millisecond)).UTC()
+						}
+						var sentTime time.Time
+						if sentTimestamp, err := strconv.Atoi(*queueMessage.Attributes[sqs.MessageSystemAttributeNameSentTimestamp]); err != nil {
+							sentTime = time.Time{}
+						} else {
+							sentTime = time.Unix(0, int64(time.Duration(sentTimestamp)*time.Millisecond)).UTC()
+						}
+						receiveCount, err := strconv.Atoi(*queueMessage.Attributes[sqs.MessageSystemAttributeNameApproximateReceiveCount])
+						if err != nil {
+							receiveCount = -1
+						}
+						metadata := AWSMetadata{
+							*queueMessage.ReceiptHandle,
+							firstReceiveTime,
+							sentTime,
+							receiveCount,
+						}
+						payload := []byte(*queueMessage.Body)
+						if encoding, ok := attributes["hedwig_encoding"]; ok && encoding == "base64" {
+							payload, err = base64.StdEncoding.DecodeString(string(payload))
+							if err != nil {
+								a.settings.GetLogger(ctx).Error(
+									err,
+									"Invalid message payload - couldn't decode using base64",
+									hedwig.LoggingFields{"message_id": queueMessage.MessageId},
+								)
+								return
+							}
+						}
+						callback(ctx, payload, attributes, metadata)
+					}()
+				}
 			}
-			if err := group.Wait(); err != nil {
-				return err
-			}
+			wg.Wait()
 		}
 	}
 }

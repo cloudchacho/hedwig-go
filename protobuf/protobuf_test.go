@@ -174,7 +174,7 @@ func (s *EncoderTestSuite) TestDecodeMessageType() {
 	s.Equal(messageType, "vehicle_created")
 	s.Equal(version, semver.MustParse("1.0"))
 
-	schema = "https://hedwig.automatic.com/schema#/schemas/vehicle_created 1.0"
+	schema = "https://github.com/cloudchacho/hedwig-go/schema#/schemas/vehicle_created 1.0"
 	_, _, err = s.encoder.DecodeMessageType(schema)
 	s.Error(err)
 }

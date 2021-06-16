@@ -73,7 +73,6 @@ func (s *BackendTestSuite) TestReceive() {
 	err = s.publish(payload2, attributes2, "hedwig-dev-user-created-v1")
 	s.Require().NoError(err)
 
-	//providerMetadata := &gcp.GCPMetadata{}
 	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload, attributes, mock.AnythingOfType("gcp.GCPMetadata")).
 		// message must be acked or Receive never returns
 		Run(func(args mock.Arguments) {
@@ -92,6 +91,49 @@ func (s *BackendTestSuite) TestReceive() {
 		Once().
 		// force method to return after just one loop
 		After(time.Millisecond * 110)
+
+	ch := make(chan bool)
+	go func() {
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
+		s.EqualError(err, "context canceled")
+		ch <- true
+		close(ch)
+	}()
+	time.Sleep(time.Millisecond * 100)
+	cancel()
+
+	// wait for co-routine to finish
+	<-ch
+
+	s.fakeConsumerCallback.AssertExpectations(s.T())
+
+	providerMetadata := s.fakeConsumerCallback.Mock.Calls[0].Arguments.Get(3).(gcp.GCPMetadata)
+	s.Equal(1, providerMetadata.DeliveryAttempt)
+}
+
+func (s *BackendTestSuite) TestReceiveCrossProject() {
+	ctx, cancel := context.WithCancel(context.Background())
+	numMessages := uint32(10)
+	visibilityTimeout := time.Second * 10
+
+	s.settings.SubscriptionsCrossProject = []hedwig.SubscriptionProject{{"dev-user-created-v1", "other-project"}}
+	s.settings.Subscriptions = []string{}
+
+	payload := []byte(`{"vehicle_id": "C_123"}`)
+	attributes := map[string]string{
+		"foo": "bar",
+	}
+	err := s.publish(payload, attributes, "hedwig-dev-user-created-v1")
+	s.Require().NoError(err)
+
+	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload, attributes, mock.AnythingOfType("gcp.GCPMetadata")).
+		// message must be acked or Receive never returns
+		Run(func(args mock.Arguments) {
+			err := s.backend.AckMessage(ctx, args.Get(3))
+			s.Require().NoError(err)
+		}).
+		Return().
+		Once()
 
 	ch := make(chan bool)
 	go func() {
@@ -156,7 +198,7 @@ func (s *BackendTestSuite) TestReceiveError() {
 }
 
 func (s *BackendTestSuite) TestPublish() {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 
 	msgTopic := "dev-user-created-v1"
 
@@ -164,8 +206,7 @@ func (s *BackendTestSuite) TestPublish() {
 	s.NoError(err)
 	s.NotEmpty(messageId)
 
-	rctx, cancel := context.WithCancel(ctx)
-	err = s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(rctx, func(_ context.Context, message *pubsub.Message) {
+	err = s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(ctx, func(_ context.Context, message *pubsub.Message) {
 		cancel()
 		s.Equal(message.Data, s.payload)
 		s.Equal(message.Attributes, s.attributes)
@@ -182,7 +223,7 @@ func (s *BackendTestSuite) TestPublishFailure() {
 }
 
 func (s *BackendTestSuite) TestAck() {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 
 	msgTopic := "dev-user-created-v1"
 
@@ -190,8 +231,7 @@ func (s *BackendTestSuite) TestAck() {
 	s.NoError(err)
 	s.NotEmpty(messageId)
 
-	rctx, cancel := context.WithCancel(ctx)
-	err = s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(rctx, func(_ context.Context, message *pubsub.Message) {
+	err = s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(ctx, func(_ context.Context, message *pubsub.Message) {
 		cancel()
 		s.Equal(message.Data, s.payload)
 		s.Equal(message.Attributes, s.attributes)
@@ -199,10 +239,9 @@ func (s *BackendTestSuite) TestAck() {
 	})
 	s.NoError(err)
 
-	rctx, cancel = context.WithCancel(ctx)
 	ch := make(chan bool)
 	go func() {
-		err := s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(rctx, func(_ context.Context, message *pubsub.Message) {
+		err := s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(ctx, func(_ context.Context, message *pubsub.Message) {
 			s.Fail("shouldn't have received any message")
 		})
 		ch <- true
@@ -216,7 +255,9 @@ func (s *BackendTestSuite) TestAck() {
 }
 
 func (s *BackendTestSuite) TestNack() {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	numMessages := uint32(10)
+	visibilityTimeout := time.Second * 10
 
 	msgTopic := "dev-user-created-v1"
 
@@ -224,25 +265,28 @@ func (s *BackendTestSuite) TestNack() {
 	s.NoError(err)
 	s.NotEmpty(messageId)
 
-	rctx, cancel := context.WithCancel(ctx)
-	err = s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(rctx, func(_ context.Context, message *pubsub.Message) {
-		cancel()
-		s.Equal(message.Data, s.payload)
-		s.Equal(message.Attributes, s.attributes)
-		s.Equal(*message.DeliveryAttempt, 1)
-		message.Nack()
-	})
-	s.NoError(err)
+	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), s.payload, s.attributes, mock.AnythingOfType("gcp.GCPMetadata")).
+		Run(func(args mock.Arguments) {
+			err := s.backend.NackMessage(ctx, args.Get(3))
+			s.Require().NoError(err)
+		}).
+		Return().
+		Once()
 
-	rctx, cancel = context.WithCancel(ctx)
-	err = s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(rctx, func(_ context.Context, message *pubsub.Message) {
-		cancel()
-		s.Equal(message.Data, s.payload)
-		s.Equal(message.Attributes, s.attributes)
-		s.GreaterOrEqual(*message.DeliveryAttempt, 2)
-		message.Ack()
-	})
-	s.NoError(err)
+	ch := make(chan bool)
+	go func() {
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
+		s.EqualError(err, "context canceled")
+		ch <- true
+		close(ch)
+	}()
+	time.Sleep(time.Millisecond * 100)
+	cancel()
+
+	// wait for co-routine to finish
+	<-ch
+
+	s.fakeConsumerCallback.AssertExpectations(s.T())
 }
 
 func (s *BackendTestSuite) TestNew() {
@@ -279,6 +323,15 @@ func (s *BackendTestSuite) SetupSuite() {
 	topic, err := s.client.CreateTopic(ctx, "hedwig-dev-user-created-v1")
 	s.Require().NoError(err)
 	_, err = s.client.CreateSubscription(ctx, "hedwig-dev-myapp-dev-user-created-v1", pubsub.SubscriptionConfig{
+		Topic:       topic,
+		AckDeadline: time.Second * 20,
+		DeadLetterPolicy: &pubsub.DeadLetterPolicy{
+			DeadLetterTopic:     dlqTopic.String(),
+			MaxDeliveryAttempts: 5,
+		},
+	})
+	s.Require().NoError(err)
+	_, err = s.client.CreateSubscription(ctx, "hedwig-dev-myapp-other-project-dev-user-created-v1", pubsub.SubscriptionConfig{
 		Topic:       topic,
 		AckDeadline: time.Second * 20,
 		DeadLetterPolicy: &pubsub.DeadLetterPolicy{
