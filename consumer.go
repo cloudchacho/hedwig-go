@@ -45,10 +45,10 @@ func (c *queueConsumer) processMessage(ctx context.Context, payload []byte, attr
 		return
 	}
 
-	callbackKey := CallbackKey{message.Type, int(message.DataSchemaVersion.Major())}
+	callbackKey := MessageTypeMajorVersion{message.Type, uint(message.DataSchemaVersion.Major())}
 	var callback CallbackFunction
 	var ok bool
-	if callback, ok = (*c.settings.CallbackRegistry)[callbackKey]; !ok {
+	if callback, ok = c.settings.CallbackRegistry[callbackKey]; !ok {
 		loggingFields := LoggingFields{"message_body": payload}
 		msg := "no callback defined for message"
 		c.settings.GetLogger(ctx).Error(errors.New(msg), msg, loggingFields)

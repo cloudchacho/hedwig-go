@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package main;
+
+import "cloudchacho/hedwig/protobuf/options.proto";
+
+option go_package = "github.com/cloudchacho/hedwig-go/examples;main";
+
+message UserCreatedV1 {
+  option (hedwig.message_options).major_version = 1;
+  option (hedwig.message_options).minor_version = 0;
+  option (hedwig.message_options).message_type = "user-created";
+
+  string user_id = 1;
+}
+
+message UserUpdatedV1 {
+  option (hedwig.message_options).major_version = 1;
+  option (hedwig.message_options).minor_version = 0;
+  option (hedwig.message_options).message_type = "user-updated";
+
+  string user_id = 1;
+}

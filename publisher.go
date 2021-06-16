@@ -30,9 +30,9 @@ func (p *Publisher) Publish(ctx context.Context, message *Message) (string, erro
 		return "", err
 	}
 
-	key := MessageRouteKey{
-		MessageType:         message.Type,
-		MessageMajorVersion: int(message.DataSchemaVersion.Major()),
+	key := MessageTypeMajorVersion{
+		MessageType:  message.Type,
+		MajorVersion: uint(message.DataSchemaVersion.Major()),
 	}
 
 	topic, ok := p.settings.MessageRouting[key]

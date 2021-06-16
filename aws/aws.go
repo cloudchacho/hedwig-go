@@ -1,6 +1,7 @@
 package aws
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -65,13 +66,25 @@ func (a *awsBackend) getSQSQueueURL(ctx context.Context) (*string, error) {
 	return out.QueueUrl, nil
 }
 
+// isValidForSQS checks that the payload is allowed in SQS message body since only some UTF8 characters are allowed
+// ref: https://docs.amazonaws.cn/en_us/AWSSimpleQueueService/latest/APIReference/API_SendMessage.html
+func (a *awsBackend) isValidForSQS(payload []byte) bool {
+	if !utf8.Valid(payload) {
+		return false
+	}
+	return bytes.IndexFunc(payload, func(r rune) bool {
+		//  allowed characters: #x9 | #xA | #xD | #x20 to #xD7FF | #xE000 to #xFFFD | #x10000 to #x10FFFF
+		return !(r == '\x09' || r == '\x0A' || r == '\x0D' || (r >= '\x20' && r <= '\uD7FF') || (r >= '\uE000' && r <= '\uFFFD') || (r >= '\U00010000' && r <= '\U0010FFFF'))
+	}) == -1
+}
+
 // Publish a message represented by the payload, with specified attributes to the specific topic
 func (a *awsBackend) Publish(ctx context.Context, message *hedwig.Message, payload []byte, attributes map[string]string, topic string) (string, error) {
 	snsTopic := a.getSNSTopic(topic)
 	var payloadStr string
 
 	// SNS requires UTF-8 encoded string
-	if !utf8.Valid(payload) {
+	if !a.isValidForSQS(payload) {
 		payloadStr = base64.StdEncoding.EncodeToString(payload)
 		attributes["hedwig_encoding"] = "base64"
 	} else {

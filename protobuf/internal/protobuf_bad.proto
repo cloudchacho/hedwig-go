@@ -1,0 +1,34 @@
+syntax = "proto2";
+
+import "cloudchacho/hedwig/protobuf/options.proto";
+
+option go_package = "github.com/cloudchacho/hedwig-go/protobuf/internal";
+
+// error: bad name and no message_type option
+message DeviceCreated {
+  option (hedwig.message_options).major_version = 1;
+
+  required int32 foobar = 1;
+}
+
+// error: bad name and no major_version option
+message DeviceCreatedNew {
+  option (hedwig.message_options).message_type = "device_created";
+
+  required int32 foobar = 1;
+}
+
+// error: major version mismatch
+message TripCreatedV4 {
+  option (hedwig.message_options).major_version = 1;
+
+  required string device_id = 1;
+}
+
+// error: duplicate message type / major version
+message TripCreatedV2New {
+  option (hedwig.message_options).major_version = 2;
+  option (hedwig.message_options).message_type = "trip_created";
+
+  required string device_id = 1;
+}

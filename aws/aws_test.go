@@ -537,7 +537,7 @@ func (s *BackendTestSuite) TestPublish() {
 	s.fakeSNS.AssertExpectations(s.T())
 }
 
-func (s *BackendTestSuite) TestPublishNonUTF8() {
+func (s *BackendTestSuite) TestPublishInvalidCharacters() {
 	ctx := context.Background()
 
 	msgTopic := "dev-myapp"
@@ -554,11 +554,11 @@ func (s *BackendTestSuite) TestPublishNonUTF8() {
 		},
 	}
 
-	nonUTFPayload := []byte("\xbd\xb2\x3d\xbc\x20\xe2\x8c\x98")
+	invalidPayload := []byte("\x19")
 
 	expectedSnsInput := &sns.PublishInput{
 		TopicArn:          &expectedTopic,
-		Message:           aws.String(base64.StdEncoding.EncodeToString(nonUTFPayload)),
+		Message:           aws.String(base64.StdEncoding.EncodeToString(invalidPayload)),
 		MessageAttributes: attributes,
 	}
 	output := &sns.PublishOutput{
@@ -568,7 +568,7 @@ func (s *BackendTestSuite) TestPublishNonUTF8() {
 	s.fakeSNS.On("PublishWithContext", ctx, expectedSnsInput, mock.Anything).
 		Return(output, nil)
 
-	messageId, err := s.backend.Publish(ctx, s.message, nonUTFPayload, s.attributes, msgTopic)
+	messageId, err := s.backend.Publish(ctx, s.message, invalidPayload, s.attributes, msgTopic)
 	s.NoError(err)
 	s.Equal(messageId, "123")
 
@@ -716,10 +716,10 @@ func (s *BackendTestSuite) SetupTest() {
 		AWSRegion:    "us-east-1",
 		AWSAccountID: "1234567890",
 		QueueName:    "DEV-MYAPP",
-		MessageRouting: map[hedwig.MessageRouteKey]string{
+		MessageRouting: map[hedwig.MessageTypeMajorVersion]string{
 			{
-				MessageType:         "user-created",
-				MessageMajorVersion: 1,
+				MessageType:  "user-created",
+				MajorVersion: 1,
 			}: "dev-user-created-v1",
 		},
 		GetLogger: func(ctx context.Context) hedwig.ILogger {

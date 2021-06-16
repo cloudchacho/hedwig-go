@@ -10,16 +10,6 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        isolated_backend_test: ['']
-        isolated_validator_test: ['']
-        include:
-          # google pub/sub requires protobuf, and aws requires jsonschema
-          - isolated_backend_test: google
-            isolated_validator_test: protobuf
-          - isolated_backend_test: aws
-            isolated_validator_test: jsonschema
     steps:
       - id: setup
         name: Setup Golang
@@ -40,11 +30,9 @@ jobs:
         run: make test
         env:
           GITHUB_CI: true
-          ISOLATED_BACKEND_TEST: ${{ matrix.isolated_backend_test }}
-          ISOLATED_VALIDATOR_TEST: ${{ matrix.isolated_validator_test }}
 
       - id: covecov
         name: Upload coverage to Codecov
         uses: codecov/codecov-action@v1
         with:
-          files: ./coverage.txt,./aws/coverage.txt,./jsonschema/coverage.txt
+          files: ./coverage.txt,./aws/coverage.txt,./jsonschema/coverage.txt,./protobuf/coverage.txt

@@ -170,7 +170,7 @@ func (s *ConsumerTestSuite) TestProcessMessageCallbackNotFound() {
 	message := Message{Type: "user-created", DataSchemaVersion: semver.MustParse("1.0")}
 	s.validator.On("Deserialize", payload, attributes, providerMetadata).
 		Return(&message, nil)
-	delete(*s.consumer.settings.CallbackRegistry, CallbackKey{"user-created", 1})
+	delete(s.consumer.settings.CallbackRegistry, MessageTypeMajorVersion{"user-created", 1})
 	s.consumer.processMessage(ctx, payload, attributes, providerMetadata)
 	s.Equal(len(s.logger.logs), 1)
 	s.Equal(s.logger.logs[0].message, "no callback defined for message")
@@ -257,7 +257,7 @@ func (s *ConsumerTestSuite) SetupTest() {
 		AWSRegion:        "us-east-1",
 		AWSAccountID:     "1234567890",
 		QueueName:        "dev-myapp",
-		CallbackRegistry: &CallbackRegistry{CallbackKey{"user-created", 1}: callback.Callback},
+		CallbackRegistry: CallbackRegistry{MessageTypeMajorVersion{"user-created", 1}: callback.Callback},
 		GetLogger:        func(_ context.Context) ILogger { return logger },
 	}
 	backend := &fakeBackend{}

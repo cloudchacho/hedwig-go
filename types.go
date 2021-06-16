@@ -6,32 +6,28 @@ import (
 	"github.com/pkg/errors"
 )
 
-// DataRegistryKey is a key identifying a data registry
-type DataRegistryKey struct {
+// MessageTypeMajorVersion is a tuple of message typa and major version
+type MessageTypeMajorVersion struct {
 	// Message type
 	MessageType string
 	// Message major version
-	MessageMajorVersion int
+	MajorVersion uint
 }
 
 // DataFactory is a function that returns a pointer to struct type that a hedwig message data should conform to
 type DataFactory func() interface{}
 
 // DataFactoryRegistry is the map of message type and major versions to a factory function
-type DataFactoryRegistry map[DataRegistryKey]DataFactory
-
-// DataRegistryKey is a key identifying a hedwig callback
-type CallbackKey struct {
-	// Message type
-	MessageType string
-	// Message major version
-	MessageMajorVersion int
-}
+type DataFactoryRegistry map[MessageTypeMajorVersion]DataFactory
 
 // CallbackFunction is the function signature for a hedwig callback function
 type CallbackFunction func(context.Context, *Message) error
 
-type CallbackRegistry map[CallbackKey]CallbackFunction
+// CallbackRegistry is a map of message type and major versions to callback functions
+type CallbackRegistry map[MessageTypeMajorVersion]CallbackFunction
+
+// MessageRouting is a map of message type and major versions to Hedwig topics
+type MessageRouting map[MessageTypeMajorVersion]string
 
 // ErrRetry should cause the task to retry, but not treat the retry as an error
 var ErrRetry = errors.New("Retry error")
