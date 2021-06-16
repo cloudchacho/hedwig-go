@@ -13,6 +13,9 @@ setup_pubsub_emulator() {
   emulator_pid=$!
   trap cleanup EXIT
 
+  # wait for emulator
+  sleep 5
+
   $(gcloud beta emulators pubsub env-init)
 }
 
