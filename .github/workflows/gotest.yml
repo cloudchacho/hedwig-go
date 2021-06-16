@@ -21,6 +21,10 @@ jobs:
         name: Checkout PR
         uses: actions/checkout@v2
 
+      - id: gcloud
+        name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v0.2
+
       - id: install
         name: Install Deps
         run: go get ./...
@@ -30,10 +34,6 @@ jobs:
         run: make test
         env:
           GITHUB_CI: true
-
-      - id: gcloud
-        name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v0.2
 
       - id: covecov
         name: Upload coverage to Codecov
