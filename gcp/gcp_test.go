@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/api/iterator"
+	"google.golang.org/api/option"
+	"google.golang.org/grpc"
 
 	"github.com/cloudchacho/hedwig-go"
 	"github.com/cloudchacho/hedwig-go/gcp"
@@ -301,7 +303,12 @@ func (s *BackendTestSuite) SetupSuite() {
 func (s *BackendTestSuite) TearDownSuite() {
 	ctx := context.Background()
 	if s.client == nil {
-		client, err := pubsub.NewClient(ctx, "emulator-project")
+		client, err := pubsub.NewClient(
+			ctx,
+			"emulator-project",
+			option.WithoutAuthentication(),
+			option.WithGRPCDialOption(grpc.WithInsecure()),
+		)
 		s.Require().NoError(err)
 		s.client = client
 	}

@@ -111,6 +111,8 @@ func (s *ConsumerTestSuite) TestProcessMessageDeserializeFailure() {
 	providerMetadata := struct{}{}
 	s.validator.On("Deserialize", payload, attributes, providerMetadata).
 		Return((*Message)(nil), errors.New("invalid message"))
+	s.backend.On("NackMessage", ctx, providerMetadata).
+		Return(nil)
 	s.consumer.processMessage(ctx, payload, attributes, providerMetadata)
 	s.Equal(len(s.logger.logs), 1)
 	s.Equal(s.logger.logs[0].message, "invalid message, unable to unmarshal")
@@ -171,6 +173,8 @@ func (s *ConsumerTestSuite) TestProcessMessageCallbackNotFound() {
 	s.validator.On("Deserialize", payload, attributes, providerMetadata).
 		Return(&message, nil)
 	delete(s.consumer.settings.CallbackRegistry, MessageTypeMajorVersion{"user-created", 1})
+	s.backend.On("NackMessage", ctx, providerMetadata).
+		Return(nil)
 	s.consumer.processMessage(ctx, payload, attributes, providerMetadata)
 	s.Equal(len(s.logger.logs), 1)
 	s.Equal(s.logger.logs[0].message, "no callback defined for message")
@@ -215,6 +219,8 @@ func (s *ConsumerTestSuite) TestProcessMessageAckFailure() {
 		Return(nil)
 	s.backend.On("AckMessage", ctx, providerMetadata).
 		Return(errors.New("failed to ack"))
+	s.backend.On("NackMessage", ctx, providerMetadata).
+		Return(nil)
 	s.consumer.processMessage(ctx, payload, attributes, providerMetadata)
 	s.Equal(len(s.logger.logs), 1)
 	s.Equal(s.logger.logs[0].message, "Failed to ack message")
