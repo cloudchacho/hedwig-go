@@ -31,6 +31,10 @@ jobs:
         env:
           GITHUB_CI: true
 
+      - id: gcloud
+        name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v0.2
+
       - id: covecov
         name: Upload coverage to Codecov
         uses: codecov/codecov-action@v1
