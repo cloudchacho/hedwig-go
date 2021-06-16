@@ -8,11 +8,11 @@ cleanup() {
 }
 
 setup_pubsub_emulator() {
-  gcloud beta emulators pubsub start --project emulator-project --quiet > /dev/null 2>&1 &
+  gcloud --quiet beta emulators pubsub start --project emulator-project > /dev/null 2>&1 &
   emulator_pid=$!
   trap cleanup EXIT
 
-  $(gcloud beta emulators pubsub env-init --quiet)
+  $(gcloud --quiet beta emulators pubsub env-init)
 }
 
 setup_pubsub_emulator
