@@ -11,11 +11,6 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - id: debug
-        run: |
-          echo $PATH
-          which gcloud
-
       - id: setup
         name: Setup Golang
         uses: actions/setup-go@v2
@@ -29,11 +24,6 @@ jobs:
       - id: gcloud
         name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v0.2
-
-      - id: debug2
-        run: |
-          echo $PATH
-          which gcloud
 
       - id: install
         name: Install Deps

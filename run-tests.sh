@@ -8,7 +8,7 @@ cleanup() {
 }
 
 setup_pubsub_emulator() {
-  gcloud components install pubsub-emulator
+  gcloud components install beta pubsub-emulator
   gcloud beta emulators pubsub start --project emulator-project > /dev/null 2>&1 &
   emulator_pid=$!
   trap cleanup EXIT
