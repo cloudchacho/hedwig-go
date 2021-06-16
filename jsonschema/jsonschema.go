@@ -189,7 +189,7 @@ func NewEncoderFromBytes(schemaFile []byte, dataRegistry hedwig.DataFactoryRegis
 				}
 			}
 
-			schemaKey := hedwig.MessageTypeMajorVersion{schemaName, majorVersion}
+			schemaKey := hedwig.MessageTypeMajorVersion{MessageType: schemaName, MajorVersion: majorVersion}
 			encoder.compiledSchemaMap[schemaKey] = schema
 
 			msgTypesFound[schemaKey] = true
@@ -349,7 +349,6 @@ func (me *messageEncoder) ExtractData(messagePayload []byte, attributes map[stri
 // DecodeData validates and decodes data
 func (me *messageEncoder) DecodeData(messageType string, version *semver.Version, data interface{}) (interface{}, error) {
 	var dataTyped []byte
-	var ok bool
 
 	if dataTypedRawMessage, ok := data.(json.RawMessage); ok {
 		dataTyped = []byte(dataTypedRawMessage)
@@ -360,6 +359,7 @@ func (me *messageEncoder) DecodeData(messageType string, version *semver.Version
 	schemaKey := hedwig.MessageTypeMajorVersion{messageType, uint(version.Major())}
 
 	var schema *jsonschema.Schema
+	var ok bool
 
 	if schema, ok = me.compiledSchemaMap[schemaKey]; !ok {
 		return nil, errors.Errorf("Unknown schema: %v", schemaKey)

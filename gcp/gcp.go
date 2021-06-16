@@ -93,7 +93,7 @@ func (g *gcpBackend) Receive(ctx context.Context, numMessages uint32, visibility
 			pubsubSubscription.ReceiveSettings.MaxExtensionPeriod = defaultVisibilityTimeoutS
 		}
 		group.Go(func() error {
-			err := pubsubSubscription.Receive(gctx, func(ctx context.Context, message *pubsub.Message) {
+			recvErr := pubsubSubscription.Receive(gctx, func(ctx context.Context, message *pubsub.Message) {
 				metadata := GCPMetadata{
 					pubsubMessage:   message,
 					PublishTime:     message.PublishTime,
@@ -101,7 +101,7 @@ func (g *gcpBackend) Receive(ctx context.Context, numMessages uint32, visibility
 				}
 				callback(ctx, message.Data, message.Attributes, metadata)
 			})
-			return err
+			return recvErr
 		})
 	}
 

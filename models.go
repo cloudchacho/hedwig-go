@@ -88,7 +88,5 @@ func NewMessage(settings *Settings, dataType string, dataSchemaVersion string, h
 		headers = make(map[string]string)
 	}
 
-	metadata := createMetadata(settings, headers)
-
-	return newMessageWithID(settings, msgID, dataType, dataSchemaVersion, metadata, data)
+	return newMessageWithID(settings, msgID, dataType, dataSchemaVersion, createMetadata(settings, headers), data)
 }

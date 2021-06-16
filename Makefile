@@ -3,6 +3,9 @@
 test: clean
 	./run-tests.sh
 
+lint:
+	golangci-lint run ./...
+
 proto-compile:
 	[ -d /usr/local/lib/protobuf/include/cloudchacho ] || (echo "Ensure github.com/cloudchacho/hedwig is cloned at /usr/local/lib/protobuf/include/cloudchacho/"; exit 2)
 	cd protobuf && protoc -I/usr/local/lib/protobuf/include -I. --go_out=. --go_opt=module=github.com/cloudchacho/hedwig-go/protobuf container.proto cloudchacho/hedwig/protobuf/options.proto

@@ -126,7 +126,6 @@ func NewMessageEncoder(protoMessages []protoreflect.Message) (hedwig.IEncoder, e
 // Type of data must be proto.Message
 func (me *messageEncoder) EncodeData(data interface{}, useMessageTransport bool, metaAttrs hedwig.MetaAttributes) ([]byte, error) {
 	var payload []byte
-	var err error
 	var ok bool
 	var dataTyped proto.Message
 	if dataTyped, ok = data.(proto.Message); !ok {
@@ -156,6 +155,7 @@ func (me *messageEncoder) EncodeData(data interface{}, useMessageTransport bool,
 			return nil, err
 		}
 	} else {
+		var err error
 		payload, err = proto.Marshal(dataTyped)
 		if err != nil {
 			// Unable to convert to bytes
@@ -167,7 +167,7 @@ func (me *messageEncoder) EncodeData(data interface{}, useMessageTransport bool,
 
 // VerifyKnownMinorVersion checks that message version is known to us
 func (me *messageEncoder) VerifyKnownMinorVersion(messageType string, version *semver.Version) error {
-	protoMessageKey := hedwig.MessageTypeMajorVersion{messageType, uint(version.Major())}
+	protoMessageKey := hedwig.MessageTypeMajorVersion{MessageType: messageType, MajorVersion: uint(version.Major())}
 
 	if schemaVersion, ok := me.versions[protoMessageKey]; ok {
 		if schemaVersion.LessThan(version) {
@@ -228,7 +228,7 @@ func (me *messageEncoder) ExtractData(messagePayload []byte, attributes map[stri
 // Type of data must be *anypb.Any for containerized format or []byte for non-containerized format
 func (me *messageEncoder) DecodeData(messageType string, version *semver.Version, data interface{}) (interface{}, error) {
 	var ok bool
-	schemaKey := hedwig.MessageTypeMajorVersion{messageType, uint(version.Major())}
+	schemaKey := hedwig.MessageTypeMajorVersion{MessageType: messageType, MajorVersion: uint(version.Major())}
 	msgClass, ok := me.protoMsgs[schemaKey]
 	if !ok {
 		return nil, errors.Errorf("Proto message not found for: %s %d.%d", messageType, version.Major(), version.Minor())

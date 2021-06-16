@@ -77,7 +77,8 @@ func (s *BackendTestSuite) TestReceive() {
 	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload, attributes, mock.AnythingOfType("gcp.GCPMetadata")).
 		// message must be acked or Receive never returns
 		Run(func(args mock.Arguments) {
-			s.backend.AckMessage(ctx, args.Get(3))
+			err := s.backend.AckMessage(ctx, args.Get(3))
+			s.Require().NoError(err)
 		}).
 		Return().
 		Once()
@@ -164,12 +165,13 @@ func (s *BackendTestSuite) TestPublish() {
 	s.NotEmpty(messageId)
 
 	rctx, cancel := context.WithCancel(ctx)
-	s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(rctx, func(_ context.Context, message *pubsub.Message) {
+	err = s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(rctx, func(_ context.Context, message *pubsub.Message) {
 		cancel()
 		s.Equal(message.Data, s.payload)
 		s.Equal(message.Attributes, s.attributes)
 		message.Ack()
 	})
+	s.Require().NoError(err)
 }
 
 func (s *BackendTestSuite) TestPublishFailure() {
@@ -200,10 +202,11 @@ func (s *BackendTestSuite) TestAck() {
 	rctx, cancel = context.WithCancel(ctx)
 	ch := make(chan bool)
 	go func() {
-		s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(rctx, func(_ context.Context, message *pubsub.Message) {
+		err := s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(rctx, func(_ context.Context, message *pubsub.Message) {
 			s.Fail("shouldn't have received any message")
 		})
 		ch <- true
+		s.Require().NoError(err)
 	}()
 	time.Sleep(time.Millisecond * 100)
 	cancel()

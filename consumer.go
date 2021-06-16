@@ -71,9 +71,9 @@ func (c *queueConsumer) processMessage(ctx context.Context, payload []byte, attr
 	err = callback(ctx, message)
 	switch err {
 	case nil:
-		err := c.backend.AckMessage(ctx, providerMetadata)
-		if err != nil {
-			c.settings.GetLogger(ctx).Error(err, "Failed to ack message", loggingFields)
+		ackErr := c.backend.AckMessage(ctx, providerMetadata)
+		if ackErr != nil {
+			c.settings.GetLogger(ctx).Error(ackErr, "Failed to ack message", loggingFields)
 		} else {
 			acked = true
 		}

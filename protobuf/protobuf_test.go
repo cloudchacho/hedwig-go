@@ -281,7 +281,7 @@ func TestEncoderTestSuite(t *testing.T) {
 func TestNewMessageEncoderFromMessageTypes(t *testing.T) {
 	assertions := assert.New(t)
 	protoMsgs := map[hedwig.MessageTypeMajorVersion]protoreflect.Message{
-		{"device_created", 1}: (&internal.DeviceCreated{}).ProtoReflect(),
+		{MessageType: "device_created", MajorVersion: 1}: (&internal.DeviceCreated{}).ProtoReflect(),
 	}
 	v, err := protobuf.NewMessageEncoderFromMessageTypes(protoMsgs)
 	assertions.NoError(err)
