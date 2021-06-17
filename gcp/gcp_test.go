@@ -99,7 +99,7 @@ func (s *BackendTestSuite) TestReceive() {
 		ch <- true
 		close(ch)
 	}()
-	time.Sleep(time.Millisecond * 100)
+	time.Sleep(time.Millisecond * 500)
 	cancel()
 
 	// wait for co-routine to finish
@@ -219,7 +219,7 @@ func (s *BackendTestSuite) TestPublishFailure() {
 	ctx := context.Background()
 
 	_, err := s.backend.Publish(ctx, s.message, s.payload, s.attributes, "does-not-exist")
-	s.EqualError(err, "Failed to publish message to SNS: rpc error: code = NotFound desc = Topic not found")
+	s.EqualError(err, "Failed to publish message to Pub/Sub: rpc error: code = NotFound desc = Topic not found")
 }
 
 func (s *BackendTestSuite) TestAck() {

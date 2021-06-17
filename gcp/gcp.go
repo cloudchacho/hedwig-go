@@ -53,7 +53,7 @@ func (g *gcpBackend) Publish(ctx context.Context, message *hedwig.Message, paylo
 	)
 	messageId, err := result.Get(ctx)
 	if err != nil {
-		return "", errors.Wrap(err, "Failed to publish message to SNS")
+		return "", errors.Wrap(err, "Failed to publish message to Pub/Sub")
 	}
 	return messageId, nil
 }
