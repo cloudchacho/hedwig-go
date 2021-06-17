@@ -142,7 +142,7 @@ func (s *BackendTestSuite) TestReceiveCrossProject() {
 		ch <- true
 		close(ch)
 	}()
-	time.Sleep(time.Millisecond * 100)
+	time.Sleep(time.Millisecond * 500)
 	cancel()
 
 	// wait for co-routine to finish
