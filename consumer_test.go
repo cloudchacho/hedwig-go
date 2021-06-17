@@ -66,8 +66,8 @@ type fakeBackend struct {
 	mock.Mock
 }
 
-func (b *fakeBackend) Receive(ctx context.Context, numMessages uint32, visibilityTimeoutS uint32, callback ConsumerCallback) error {
-	args := b.Called(ctx, numMessages, visibilityTimeoutS, callback)
+func (b *fakeBackend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback ConsumerCallback) error {
+	args := b.Called(ctx, numMessages, visibilityTimeout, callback)
 	return args.Error(0)
 }
 
@@ -111,6 +111,8 @@ func (s *ConsumerTestSuite) TestProcessMessageDeserializeFailure() {
 	providerMetadata := struct{}{}
 	s.validator.On("Deserialize", payload, attributes, providerMetadata).
 		Return((*Message)(nil), errors.New("invalid message"))
+	s.backend.On("NackMessage", ctx, providerMetadata).
+		Return(nil)
 	s.consumer.processMessage(ctx, payload, attributes, providerMetadata)
 	s.Equal(len(s.logger.logs), 1)
 	s.Equal(s.logger.logs[0].message, "invalid message, unable to unmarshal")
@@ -171,6 +173,8 @@ func (s *ConsumerTestSuite) TestProcessMessageCallbackNotFound() {
 	s.validator.On("Deserialize", payload, attributes, providerMetadata).
 		Return(&message, nil)
 	delete(s.consumer.settings.CallbackRegistry, MessageTypeMajorVersion{"user-created", 1})
+	s.backend.On("NackMessage", ctx, providerMetadata).
+		Return(nil)
 	s.consumer.processMessage(ctx, payload, attributes, providerMetadata)
 	s.Equal(len(s.logger.logs), 1)
 	s.Equal(s.logger.logs[0].message, "no callback defined for message")
@@ -215,6 +219,8 @@ func (s *ConsumerTestSuite) TestProcessMessageAckFailure() {
 		Return(nil)
 	s.backend.On("AckMessage", ctx, providerMetadata).
 		Return(errors.New("failed to ack"))
+	s.backend.On("NackMessage", ctx, providerMetadata).
+		Return(nil)
 	s.consumer.processMessage(ctx, payload, attributes, providerMetadata)
 	s.Equal(len(s.logger.logs), 1)
 	s.Equal(s.logger.logs[0].message, "Failed to ack message")
@@ -227,11 +233,11 @@ func (s *ConsumerTestSuite) TestProcessMessageAckFailure() {
 func (s *ConsumerTestSuite) TestListenForMessages() {
 	ctx := context.Background()
 	numMessages := uint32(10)
-	visibilityTimeoutS := uint32(20)
-	s.backend.On("Receive", ctx, numMessages, visibilityTimeoutS, mock.AnythingOfType("ConsumerCallback")).
+	visibilityTimeout := time.Second * 20
+	s.backend.On("Receive", ctx, numMessages, visibilityTimeout, mock.AnythingOfType("ConsumerCallback")).
 		Return(context.Canceled).
 		After(500 * time.Millisecond)
-	err := s.consumer.ListenForMessages(ctx, ListenRequest{numMessages, visibilityTimeoutS})
+	err := s.consumer.ListenForMessages(ctx, ListenRequest{numMessages, visibilityTimeout})
 	assert.EqualError(s.T(), err, "context canceled")
 	s.backend.AssertExpectations(s.T())
 }
@@ -263,7 +269,8 @@ func (s *ConsumerTestSuite) SetupTest() {
 	backend := &fakeBackend{}
 	validator := &fakeValidator{}
 
-	s.consumer = NewQueueConsumer(settings, backend, validator).(*queueConsumer)
+	s.consumer = NewQueueConsumer(settings, backend, nil).(*queueConsumer)
+	s.consumer.validator = validator
 	s.backend = backend
 	s.callback = callback
 	s.validator = validator

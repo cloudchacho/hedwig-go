@@ -8,24 +8,33 @@ import (
 
 	"github.com/cloudchacho/hedwig-go"
 	"github.com/cloudchacho/hedwig-go/aws"
+	"github.com/cloudchacho/hedwig-go/gcp"
 	"github.com/cloudchacho/hedwig-go/jsonschema"
 	"github.com/cloudchacho/hedwig-go/protobuf"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
-func settings(isProtobuf bool) *hedwig.Settings {
+func settings(isProtobuf bool, publisherBackend string) *hedwig.Settings {
 	handler := &handler{isProtobuf: isProtobuf}
 	callbackRegistry := hedwig.CallbackRegistry{{"user-created", 1}: handler.userCreated}
-	useMessageAttributes := false
+	useMessageAttributes := true
+	var queueName string
+	if publisherBackend == "aws" {
+		queueName = "DEV-MYAPP"
+	} else {
+		queueName = "dev-myapp"
+	}
 	return &hedwig.Settings{
-		AWSAccessKey:     os.Getenv("AWS_ACCESS_KEY"),
-		AWSAccountID:     os.Getenv("AWS_ACCOUNT_ID"),
-		AWSRegion:        os.Getenv("AWS_REGION"),
-		AWSSecretKey:     os.Getenv("AWS_SECRET_KEY"),
-		AWSSessionToken:  os.Getenv("AWS_SESSION_TOKEN"),
-		CallbackRegistry: callbackRegistry,
-		PublisherName:    "MYAPP",
-		QueueName:        "DEV-MYAPP",
+		AWSAccessKey:       os.Getenv("AWS_ACCESS_KEY"),
+		AWSAccountID:       os.Getenv("AWS_ACCOUNT_ID"),
+		AWSRegion:          os.Getenv("AWS_REGION"),
+		AWSSecretKey:       os.Getenv("AWS_SECRET_KEY"),
+		AWSSessionToken:    os.Getenv("AWS_SESSION_TOKEN"),
+		GoogleCloudProject: os.Getenv("GOOGLE_CLOUD_PROJECT"),
+		CallbackRegistry:   callbackRegistry,
+		PublisherName:      "MYAPP",
+		QueueName:          queueName,
+		Subscriptions:      []string{"dev-user-created-v1"},
 		MessageRouting: map[hedwig.MessageTypeMajorVersion]string{
 			hedwig.MessageTypeMajorVersion{
 				MessageType:  "user-created",
@@ -97,23 +106,31 @@ func encoder(isProtobuf bool) hedwig.IEncoder {
 
 }
 
-func runConsumer(isProtobuf bool) {
-	settings := settings(isProtobuf)
-	validator := hedwig.NewMessageValidator(settings, encoder(isProtobuf))
-	awsSessionCache := aws.NewAWSSessionsCache()
-	backend := aws.NewAWSBackend(settings, awsSessionCache)
-	consumer := hedwig.NewQueueConsumer(settings, backend, validator)
+func backend(settings *hedwig.Settings, publisherBackend string) hedwig.IBackend {
+	if publisherBackend == "aws" {
+		awsSessionCache := aws.NewAWSSessionsCache()
+		return aws.NewAWSBackend(settings, awsSessionCache)
+	} else if publisherBackend == "gcp" {
+		return gcp.NewGCPBackend(settings)
+	} else {
+		panic(fmt.Sprintf("unknown backend name: %s", publisherBackend))
+	}
+}
+
+func runConsumer(isProtobuf bool, publisherBackend string) {
+	settings := settings(isProtobuf, publisherBackend)
+	backend := backend(settings, publisherBackend)
+	consumer := hedwig.NewQueueConsumer(settings, backend, encoder(isProtobuf))
 	err := consumer.ListenForMessages(context.Background(), hedwig.ListenRequest{})
 	if err != nil {
 		panic(fmt.Sprintf("Failed to consume messages: %v", err))
 	}
 }
 
-func runPublisher(isProtobuf bool) {
-	settings := settings(isProtobuf)
+func runPublisher(isProtobuf bool, publisherBackend string) {
+	settings := settings(isProtobuf, publisherBackend)
 	validator := hedwig.NewMessageValidator(settings, encoder(isProtobuf))
-	awsSessionCache := aws.NewAWSSessionsCache()
-	backend := aws.NewAWSBackend(settings, awsSessionCache)
+	backend := backend(settings, publisherBackend)
 	publisher := hedwig.NewPublisher(settings, backend, validator)
 	data := userCreatedData(isProtobuf)
 	message, err := hedwig.NewMessage(settings, "user-created", "1.0", map[string]string{"request_id": "123"}, data)
@@ -124,7 +141,7 @@ func runPublisher(isProtobuf bool) {
 	if err != nil {
 		panic(fmt.Sprintf("Failed to publish message: %v", err))
 	}
-	fmt.Printf("Published message with id %s successfully with sns id: %s\n", message.ID, messageId)
+	fmt.Printf("Published message with id %s successfully with publish id: %s\n", message.ID, messageId)
 }
 
 func main() {
@@ -132,9 +149,15 @@ func main() {
 	if isProtobufStr, found := os.LookupEnv("HEDWIG_PROTOBUF"); found {
 		isProtobuf = strings.ToLower(isProtobufStr) == "true"
 	}
+	publisherBackend := "aws"
+	if isGCPStr, found := os.LookupEnv("HEDWIG_GCP"); found && strings.ToLower(isGCPStr) == "true" {
+		publisherBackend = "gcp"
+	}
 	if os.Args[1] == "consumer" {
-		runConsumer(isProtobuf)
+		runConsumer(isProtobuf, publisherBackend)
 	} else if os.Args[1] == "publisher" {
-		runPublisher(isProtobuf)
+		runPublisher(isProtobuf, publisherBackend)
+	} else {
+		panic(fmt.Sprintf("unknown command: %s", os.Args[1]))
 	}
 }

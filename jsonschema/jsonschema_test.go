@@ -24,7 +24,7 @@ func newFakeHedwigDataField() interface{} {
 
 func (s *EncoderTestSuite) TestFormatHumanUUID() {
 	testSchema := []byte(`{
-    "id": "https://hedwig.automatic.com/schema",
+    "id": "https://github.com/cloudchacho/hedwig-go/schema",
     "$schema": "http://json-schema.org/draft-04/schema#",
     "description": "Test Schema for Hedwig messages",
     "schemas": {
@@ -70,7 +70,7 @@ func (s *EncoderTestSuite) TestFormatHumanUUID() {
 
 func (s *EncoderTestSuite) TestInvalidXVersion() {
 	testSchema := []byte(`{
-    "id": "https://hedwig.automatic.com/schema",
+    "id": "https://github.com/cloudchacho/hedwig-go/schema",
     "$schema": "http://json-schema.org/draft-04/schema#",
     "description": "Test Schema for Hedwig messages",
     "schemas": {
@@ -86,7 +86,7 @@ func (s *EncoderTestSuite) TestInvalidXVersion() {
 	s.EqualError(err, "Missing x-version from schema definition for vehicle_created")
 
 	testSchema = []byte(`{
-    "id": "https://hedwig.automatic.com/schema",
+    "id": "https://github.com/cloudchacho/hedwig-go/schema",
     "$schema": "http://json-schema.org/draft-04/schema#",
     "description": "Test Schema for Hedwig messages",
     "schemas": {
@@ -102,7 +102,7 @@ func (s *EncoderTestSuite) TestInvalidXVersion() {
 	s.EqualError(err, "invalid value for x-version: foobar, must be semver")
 
 	testSchema = []byte(`{
-    "id": "https://hedwig.automatic.com/schema",
+    "id": "https://github.com/cloudchacho/hedwig-go/schema",
     "$schema": "http://json-schema.org/draft-04/schema#",
     "description": "Test Schema for Hedwig messages",
     "schemas": {
@@ -131,7 +131,7 @@ func (s *EncoderTestSuite) TestVerifyKnownMinorVersion() {
 
 func (s *EncoderTestSuite) TestEncodeMessageType() {
 	messageType := s.encoder.EncodeMessageType("vehicle_created", semver.MustParse("1.0"))
-	s.Equal(messageType, "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0")
+	s.Equal(messageType, "https://github.com/cloudchacho/hedwig-go/schema#/schemas/vehicle_created/1.0")
 }
 
 func (s *EncoderTestSuite) TestEncodeData() {
@@ -141,7 +141,7 @@ func (s *EncoderTestSuite) TestEncodeData() {
 		Publisher:     "myapp",
 		Headers:       map[string]string{"foo": "bar"},
 		ID:            "123",
-		Schema:        "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
+		Schema:        "https://github.com/cloudchacho/hedwig-go/schema#/schemas/vehicle_created/1.0",
 		FormatVersion: semver.MustParse("1.0"),
 	}
 	payload, err := s.encoder.EncodeData(data, true, metaAttrs)
@@ -156,13 +156,13 @@ func (s *EncoderTestSuite) TestEncodeDataContainerized() {
 		Publisher:     "myapp",
 		Headers:       map[string]string{"foo": "bar"},
 		ID:            "123",
-		Schema:        "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
+		Schema:        "https://github.com/cloudchacho/hedwig-go/schema#/schemas/vehicle_created/1.0",
 		FormatVersion: semver.MustParse("1.0"),
 	}
 	payload, err := s.encoder.EncodeData(data, false, metaAttrs)
 	s.NoError(err)
 	s.Equal(string(payload), "{\"format_version\":\"1.0\","+
-		"\"schema\":\"https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0\","+
+		"\"schema\":\"https://github.com/cloudchacho/hedwig-go/schema#/schemas/vehicle_created/1.0\","+
 		"\"id\":\"123\","+
 		"\"metadata\":{\"Timestamp\":1621550514000,\"Publisher\":\"myapp\",\"Headers\":{\"foo\":\"bar\"}},"+
 		"\"data\":{\"vehicle_id\":\"C_123\"}}")
@@ -175,7 +175,7 @@ func (s *EncoderTestSuite) TestEncodeDataFailInvalidData() {
 		Publisher:     "myapp",
 		Headers:       map[string]string{"foo": "bar"},
 		ID:            "123",
-		Schema:        "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
+		Schema:        "https://github.com/cloudchacho/hedwig-go/schema#/schemas/vehicle_created/1.0",
 		FormatVersion: semver.MustParse("1.0"),
 	}
 	_, err := s.encoder.EncodeData(data, true, metaAttrs)
@@ -184,7 +184,7 @@ func (s *EncoderTestSuite) TestEncodeDataFailInvalidData() {
 
 func (s *EncoderTestSuite) TestExtractData() {
 	payload := []byte(`{"format_version":"1.0",
-		"schema":"https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
+		"schema":"https://github.com/cloudchacho/hedwig-go/schema#/schemas/vehicle_created/1.0",
 		"id":"d70a641e-14ab-32e4-a790-459bd36de532",
 		"metadata":{"Timestamp":1621550514000,"Publisher":"myapp","Headers":{"foo":"bar"}},
 		"data":{"vehicle_id":"C_123"}}`)
@@ -198,14 +198,14 @@ func (s *EncoderTestSuite) TestExtractData() {
 		Publisher:     "myapp",
 		Headers:       map[string]string{"foo": "bar"},
 		ID:            "d70a641e-14ab-32e4-a790-459bd36de532",
-		Schema:        "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
+		Schema:        "https://github.com/cloudchacho/hedwig-go/schema#/schemas/vehicle_created/1.0",
 		FormatVersion: semver.MustParse("1.0"),
 	})
 	s.Equal(string(extractedData.(json.RawMessage)), "{\"vehicle_id\":\"C_123\"}")
 }
 
 func (s *EncoderTestSuite) TestExtractDataInvalid() {
-	payload := []byte(`{"schema":"https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0",
+	payload := []byte(`{"schema":"https://github.com/cloudchacho/hedwig-go/schema#/schemas/vehicle_created/1.0",
 		"id":"d70a641e-14ab-32e4-a790-459bd36de532",
 		"metadata":{"Timestamp":1621550514000,"Publisher":"myapp","Headers":{"foo":"bar"}},
 		"data":{"vehicle_id":"C_123"}}`)
@@ -217,7 +217,7 @@ func (s *EncoderTestSuite) TestExtractDataInvalid() {
 }
 
 func (s *EncoderTestSuite) TestDecodeMessageType() {
-	schema := "https://hedwig.automatic.com/schema#/schemas/vehicle_created/1.0"
+	schema := "https://github.com/cloudchacho/hedwig-go/schema#/schemas/vehicle_created/1.0"
 	messageType, version, err := s.encoder.DecodeMessageType(schema)
 	s.NoError(err)
 	s.Equal(messageType, "vehicle_created")
@@ -318,7 +318,7 @@ func TestInvalidSchemaNotMajorVersion(t *testing.T) {
 	assertions := assert.New(t)
 	invalidSchema := `
 	{
-		"id": "https://hedwig.automatic.com/schema",
+		"id": "https://github.com/cloudchacho/hedwig-go/schema",
 		"$schema": "http://json-schema.org/draft-04/schema#",
 		"description": "Test Schema for Hedwig messages",
 		"schemas": {
@@ -331,7 +331,7 @@ func TestInvalidSchemaNotMajorVersion(t *testing.T) {
 						"user_id"
 					],
 					"properties": {
-						"vehicle_id": {
+						"vehicle_id": {gcp/gcp_test.go:26
 							"type": "string"
 						},
 						"user_id": {
@@ -340,7 +340,8 @@ func TestInvalidSchemaNotMajorVersion(t *testing.T) {
 						"vin": {
 							"type": "string"
 						}
-					}
+					},
+					"x-version": "1.0"
 				}
 			}
 		}
@@ -355,7 +356,7 @@ func TestInvalidSchemaMajorVersionMismatch(t *testing.T) {
 	assertions := assert.New(t)
 	invalidSchema := `
 	{
-		"id": "https://hedwig.automatic.com/schema",
+		"id": "https://github.com/cloudchacho/hedwig-go/schema",
 		"$schema": "http://json-schema.org/draft-04/schema#",
 		"description": "Test Schema for Hedwig messages",
 		"schemas": {
@@ -393,7 +394,7 @@ func TestInvalidSchemaNoXVersion(t *testing.T) {
 	assertions := assert.New(t)
 	invalidSchema := `
 	{
-		"id": "https://hedwig.automatic.com/schema",
+		"id": "https://github.com/cloudchacho/hedwig-go/schema",
 		"$schema": "http://json-schema.org/draft-04/schema#",
 		"description": "Test Schema for Hedwig messages",
 		"schemas": {
@@ -428,7 +429,7 @@ func TestInvalidSchemaNoXVersion(t *testing.T) {
 
 func TestInvalidSchemaNotJSON(t *testing.T) {
 	assertions := assert.New(t)
-	invalidSchema := `"https://hedwig.automatic.com/schema"`
+	invalidSchema := `"https://github.com/cloudchacho/hedwig-go/schema"`
 	v, err := NewEncoderFromBytes([]byte(invalidSchema), hedwig.DataFactoryRegistry{})
 	assertions.Nil(v)
 	assertions.Error(err)
@@ -446,7 +447,7 @@ func TestInvalidSchemaMessageTypeNotFound(t *testing.T) {
 	assertions := assert.New(t)
 	schema := `
 	{
-		"id": "https://hedwig.automatic.com/schema",
+		"id": "https://github.com/cloudchacho/hedwig-go/schema",
 		"$schema": "http://json-schema.org/draft-04/schema#",
 		"description": "Test Schema for Hedwig messages",
 		"schemas": {

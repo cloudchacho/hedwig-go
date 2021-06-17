@@ -4,15 +4,14 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/protobuf/types/known/anypb"
-	"google.golang.org/protobuf/types/known/timestamppb"
-
 	"github.com/Masterminds/semver"
-	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/cloudchacho/hedwig-go"
 	"github.com/cloudchacho/hedwig-go/protobuf"
@@ -82,6 +81,7 @@ func (s *EncoderTestSuite) TestEncodeDataContainerized() {
 	s.NoError(err)
 	serializedPayload := &protobuf.PayloadV1{}
 	err = proto.Unmarshal(payload, serializedPayload)
+	s.Require().NoError(err)
 	s.Equal(payloadMsg.String(), serializedPayload.String())
 }
 
@@ -174,7 +174,7 @@ func (s *EncoderTestSuite) TestDecodeMessageType() {
 	s.Equal(messageType, "vehicle_created")
 	s.Equal(version, semver.MustParse("1.0"))
 
-	schema = "https://hedwig.automatic.com/schema#/schemas/vehicle_created 1.0"
+	schema = "https://github.com/cloudchacho/hedwig-go/schema#/schemas/vehicle_created 1.0"
 	_, _, err = s.encoder.DecodeMessageType(schema)
 	s.Error(err)
 }
@@ -281,7 +281,7 @@ func TestEncoderTestSuite(t *testing.T) {
 func TestNewMessageEncoderFromMessageTypes(t *testing.T) {
 	assertions := assert.New(t)
 	protoMsgs := map[hedwig.MessageTypeMajorVersion]protoreflect.Message{
-		{"device_created", 1}: (&internal.DeviceCreated{}).ProtoReflect(),
+		{MessageType: "device_created", MajorVersion: 1}: (&internal.DeviceCreated{}).ProtoReflect(),
 	}
 	v, err := protobuf.NewMessageEncoderFromMessageTypes(protoMsgs)
 	assertions.NoError(err)

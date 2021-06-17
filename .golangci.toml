@@ -1,0 +1,22 @@
+[run]
+
+skip-files = ".*\\.pb\\.go$"
+
+timeout = "5m"
+
+[issues]
+
+max-same-issues = 0
+
+[linters-settings.misspell]
+
+locale = "US"
+
+[linters-settings.govet]
+
+check-shadowing = true
+disable = ["composites"]
+
+[linters]
+
+enable = ["misspell"]

@@ -46,12 +46,12 @@ func readContainerSchema() *jsonschema.Schema {
 	// Force to draft version 4
 	compiler.Draft = jsonschema.Draft4
 
-	err := compiler.AddResource("https://hedwig.automatic.com/format_schema", strings.NewReader(containerSchemaStr))
+	err := compiler.AddResource("https://github.com/cloudchacho/hedwig-go/schemas/format_schema", strings.NewReader(containerSchemaStr))
 	if err != nil {
 		fmt.Println(err)
 		panic("unable to add schema resource - should never happen")
 	}
-	schema, err := compiler.Compile("https://hedwig.automatic.com/format_schema")
+	schema, err := compiler.Compile("https://github.com/cloudchacho/hedwig-go/schemas/format_schema")
 	if err != nil {
 		fmt.Println(err)
 		panic("unable to compile schema - should never happen")
@@ -130,12 +130,12 @@ func NewEncoderFromBytes(schemaFile []byte, dataRegistry hedwig.DataFactoryRegis
 	}
 
 	schemaMap := parsedSchema["schemas"].(map[string]interface{})
-	for schemaName, schemaVersionObj := range schemaMap {
+	for messageType, schemaVersionObj := range schemaMap {
 		schemaVersionMap := schemaVersionObj.(map[string]interface{})
 		for version, schema := range schemaVersionMap {
 			matches := schemaMajorVersionRegexp.FindStringSubmatch(version)
 			if matches == nil {
-				return nil, errors.Errorf("invalid version %s for %s", version, schemaName)
+				return nil, errors.Errorf("invalid version %s for %s", version, messageType)
 			}
 
 			majorVersionSigned, err := strconv.Atoi(matches[1])
@@ -159,7 +159,7 @@ func NewEncoderFromBytes(schemaFile []byte, dataRegistry hedwig.DataFactoryRegis
 
 			compiler.Extensions["x-version"] = xVersionsExt()
 
-			schemaURL := fmt.Sprintf("%s/schemas/%s/%s", encoder.schemaID, schemaName, version)
+			schemaURL := fmt.Sprintf("%s/schemas/%s/%s", encoder.schemaID, messageType, version)
 
 			err = compiler.AddResource(schemaURL, strings.NewReader(string(schemaByte)))
 			if err != nil {
@@ -179,17 +179,17 @@ func NewEncoderFromBytes(schemaFile []byte, dataRegistry hedwig.DataFactoryRegis
 			}
 
 			if value, ok := schema.Extensions[xVersionKey]; !ok {
-				return nil, errors.Errorf("Missing x-version from schema definition for %s", schemaName)
+				return nil, errors.Errorf("Missing x-version from schema definition for %s", messageType)
 			} else {
 				xVersion := value.(*semver.Version)
 				if xVersion.Major() != int64(majorVersion) {
 					return nil, errors.Errorf("Invalid x-version: %d.%d for: %s/%s",
-						xVersion.Major(), xVersion.Minor(), schemaName, version,
+						xVersion.Major(), xVersion.Minor(), messageType, version,
 					)
 				}
 			}
 
-			schemaKey := hedwig.MessageTypeMajorVersion{schemaName, majorVersion}
+			schemaKey := hedwig.MessageTypeMajorVersion{messageType, majorVersion}
 			encoder.compiledSchemaMap[schemaKey] = schema
 
 			msgTypesFound[schemaKey] = true
@@ -349,7 +349,6 @@ func (me *messageEncoder) ExtractData(messagePayload []byte, attributes map[stri
 // DecodeData validates and decodes data
 func (me *messageEncoder) DecodeData(messageType string, version *semver.Version, data interface{}) (interface{}, error) {
 	var dataTyped []byte
-	var ok bool
 
 	if dataTypedRawMessage, ok := data.(json.RawMessage); ok {
 		dataTyped = []byte(dataTypedRawMessage)
@@ -360,6 +359,7 @@ func (me *messageEncoder) DecodeData(messageType string, version *semver.Version
 	schemaKey := hedwig.MessageTypeMajorVersion{messageType, uint(version.Major())}
 
 	var schema *jsonschema.Schema
+	var ok bool
 
 	if schema, ok = me.compiledSchemaMap[schemaKey]; !ok {
 		return nil, errors.Errorf("Unknown schema: %v", schemaKey)

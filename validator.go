@@ -125,7 +125,10 @@ func (v *messageValidator) Serialize(message *Message) ([]byte, map[string]strin
 	if err != nil {
 		return nil, nil, err
 	}
-	v.verifyHeaders(message.Metadata.Headers)
+	err = v.verifyHeaders(message.Metadata.Headers)
+	if err != nil {
+		return nil, nil, err
+	}
 	schema := v.encoder.EncodeMessageType(message.Type, message.DataSchemaVersion)
 	metaAttrs := MetaAttributes{
 		message.Metadata.Timestamp,

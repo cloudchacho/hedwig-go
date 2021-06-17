@@ -24,6 +24,7 @@ type metadata struct {
 	Timestamp time.Time
 
 	// ProviderMetadata represents backend provider specific metadata, e.g. AWS receipt, or Pub/Sub ack ID
+	// For concrete type of metadata, check the documentation of your backend class
 	ProviderMetadata interface{}
 }
 
@@ -87,7 +88,5 @@ func NewMessage(settings *Settings, dataType string, dataSchemaVersion string, h
 		headers = make(map[string]string)
 	}
 
-	metadata := createMetadata(settings, headers)
-
-	return newMessageWithID(settings, msgID, dataType, dataSchemaVersion, metadata, data)
+	return newMessageWithID(settings, msgID, dataType, dataSchemaVersion, createMetadata(settings, headers), data)
 }

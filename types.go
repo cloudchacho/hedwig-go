@@ -2,6 +2,7 @@ package hedwig
 
 import (
 	"context"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -32,12 +33,21 @@ type MessageRouting map[MessageTypeMajorVersion]string
 // ErrRetry should cause the task to retry, but not treat the retry as an error
 var ErrRetry = errors.New("Retry error")
 
+// SubscriptionProject represents a tuple of subscription name and project for cross-project Google subscriptions
+type SubscriptionProject struct {
+	// Subscription name
+	Subscription string
+
+	// ProjectID
+	ProjectID string
+}
+
 type ConsumerCallback func(ctx context.Context, payload []byte, attributes map[string]string, providerMetadata interface{})
 
 type IBackend interface {
 	// Receive messages from configured queue(s) and provide it through the callback. This should run indefinitely
-	// until the context is cancelled. Provider metadata should include all info necessary to ack/nack a message.
-	Receive(ctx context.Context, numMessages uint32, visibilityTimeoutS uint32, callback ConsumerCallback) error
+	// until the context is canceled. Provider metadata should include all info necessary to ack/nack a message.
+	Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback ConsumerCallback) error
 
 	// NackMessage nacks a message on the queue
 	NackMessage(ctx context.Context, providerMetadata interface{}) error

@@ -67,6 +67,9 @@ func NewMessageEncoderFromMessageTypes(protoMessages map[hedwig.MessageTypeMajor
 }
 
 // NewMessageEncoder creates a new encoder from given list of proto-messages
+// Proto messages must declare [hedwig.message_options](https://github.com/cloudchacho/hedwig/blob/main/protobuf/options.proto) option.
+// See [example proto file](../examples/schema.proto) for reference.
+//
 // This method will try to read message type from message_options, and if not specified,
 // assume that the messages are named as: `<MessageType>V<MajorVersion>`. If that doesn't work
 // for your use case, use NewMessageEncoderFromMessageTypes and provide an explicit mapping.
@@ -109,11 +112,12 @@ func NewMessageEncoder(protoMessages []protoreflect.Message) (hedwig.IEncoder, e
 			// will never happen, version was constructed by string formatting
 			return nil, err
 		}
-		if _, ok := protoMessagesMap[hedwig.MessageTypeMajorVersion{messageType, majorVersion}]; ok {
+		schemaKey := hedwig.MessageTypeMajorVersion{messageType, majorVersion}
+		if _, ok := protoMessagesMap[schemaKey]; ok {
 			return nil, errors.Errorf("duplicate message found for %s %d", messageType, majorVersion)
 		}
-		protoMessagesMap[hedwig.MessageTypeMajorVersion{messageType, majorVersion}] = msg
-		versions[hedwig.MessageTypeMajorVersion{messageType, majorVersion}] = version
+		protoMessagesMap[schemaKey] = msg
+		versions[schemaKey] = version
 	}
 	return &messageEncoder{protoMsgs: protoMessagesMap, versions: versions}, nil
 }
@@ -122,7 +126,6 @@ func NewMessageEncoder(protoMessages []protoreflect.Message) (hedwig.IEncoder, e
 // Type of data must be proto.Message
 func (me *messageEncoder) EncodeData(data interface{}, useMessageTransport bool, metaAttrs hedwig.MetaAttributes) ([]byte, error) {
 	var payload []byte
-	var err error
 	var ok bool
 	var dataTyped proto.Message
 	if dataTyped, ok = data.(proto.Message); !ok {
@@ -131,6 +134,10 @@ func (me *messageEncoder) EncodeData(data interface{}, useMessageTransport bool,
 
 	if !useMessageTransport {
 		anyMsg, err := anypb.New(dataTyped)
+		if err != nil {
+			// Unable to convert to bytes
+			return nil, err
+		}
 		container := &PayloadV1{
 			FormatVersion: fmt.Sprintf("%d.%d", metaAttrs.FormatVersion.Major(), metaAttrs.FormatVersion.Minor()),
 			Id:            metaAttrs.ID,
@@ -148,6 +155,7 @@ func (me *messageEncoder) EncodeData(data interface{}, useMessageTransport bool,
 			return nil, err
 		}
 	} else {
+		var err error
 		payload, err = proto.Marshal(dataTyped)
 		if err != nil {
 			// Unable to convert to bytes

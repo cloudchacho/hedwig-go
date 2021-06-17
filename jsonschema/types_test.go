@@ -13,9 +13,9 @@ import (
 
 func TestJSONTimeMarshal(t *testing.T) {
 	ts := jsonschema.JSONTime(time.Unix(1621870411, 123456000))
-	marshalled, err := json.Marshal(ts)
+	marshaled, err := json.Marshal(ts)
 	require.NoError(t, err)
-	assert.Equal(t, []byte(`1621870411123`), marshalled)
+	assert.Equal(t, []byte(`1621870411123`), marshaled)
 }
 
 func TestJSONTimeUnmarshal(t *testing.T) {
