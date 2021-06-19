@@ -93,8 +93,28 @@ func (c *queueConsumer) ListenForMessages(ctx context.Context, request ListenReq
 	return c.backend.Receive(ctx, request.NumMessages, request.VisibilityTimeout, c.processMessage)
 }
 
+func wrapCallback(function CallbackFunction) CallbackFunction {
+	return func(ctx context.Context, message *Message) (err error) {
+		defer func() {
+			if rErr := recover(); rErr != nil {
+				if typedErr, ok := rErr.(error); ok {
+					err = errors.Wrapf(typedErr, "callback failed with panic")
+				} else {
+					err = errors.Errorf("panic: %v", rErr)
+				}
+			}
+		}()
+		err = function(ctx, message)
+		return
+	}
+}
+
 func NewQueueConsumer(settings *Settings, backend IBackend, encoder IEncoder) IQueueConsumer {
 	settings.initDefaults()
+
+	for key, callback := range settings.CallbackRegistry {
+		settings.CallbackRegistry[key] = wrapCallback(callback)
+	}
 
 	return &queueConsumer{
 		consumer: consumer{

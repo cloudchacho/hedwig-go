@@ -143,6 +143,27 @@ func (s *ConsumerTestSuite) TestProcessMessageCallbackFailure() {
 	s.callback.AssertExpectations(s.T())
 }
 
+func (s *ConsumerTestSuite) TestProcessMessageCallbackPanic() {
+	ctx := context.Background()
+	payload := []byte(`foobar`)
+	attributes := map[string]string{"request_id": "123"}
+	providerMetadata := struct{}{}
+	message := Message{Type: "user-created", DataSchemaVersion: semver.MustParse("1.0")}
+	s.validator.On("Deserialize", payload, attributes, providerMetadata).
+		Return(&message, nil)
+	s.callback.On("Callback", ctx, &message).
+		Panic("failed to process")
+	s.backend.On("NackMessage", ctx, providerMetadata).
+		Return(nil)
+	s.consumer.processMessage(ctx, payload, attributes, providerMetadata)
+	s.Equal(len(s.logger.logs), 1)
+	s.Equal(s.logger.logs[0].message, "Retrying due to unknown exception")
+	s.EqualError(s.logger.logs[0].err, "panic: failed to process")
+	s.backend.AssertExpectations(s.T())
+	s.validator.AssertExpectations(s.T())
+	s.callback.AssertExpectations(s.T())
+}
+
 func (s *ConsumerTestSuite) TestProcessMessageCallbackErrRetry() {
 	ctx := context.Background()
 	payload := []byte(`foobar`)
