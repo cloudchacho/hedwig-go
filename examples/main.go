@@ -36,7 +36,7 @@ func settings(isProtobuf bool, publisherBackend string) *hedwig.Settings {
 		QueueName:          queueName,
 		Subscriptions:      []string{"dev-user-created-v1"},
 		MessageRouting: map[hedwig.MessageTypeMajorVersion]string{
-			hedwig.MessageTypeMajorVersion{
+			{
 				MessageType:  "user-created",
 				MajorVersion: 1,
 			}: "dev-user-created-v1",
@@ -137,11 +137,11 @@ func runPublisher(isProtobuf bool, publisherBackend string) {
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create message: %v", err))
 	}
-	messageId, err := publisher.Publish(context.Background(), message)
+	messageID, err := publisher.Publish(context.Background(), message)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to publish message: %v", err))
 	}
-	fmt.Printf("Published message with id %s successfully with publish id: %s\n", message.ID, messageId)
+	fmt.Printf("Published message with id %s successfully with publish id: %s\n", message.ID, messageID)
 }
 
 func main() {

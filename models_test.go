@@ -164,14 +164,14 @@ func TestMessagePublish(t *testing.T) {
 	require.NoError(t, err)
 
 	publisher := &fakePublisher{}
-	messageId := "123"
+	messageID := "123"
 
 	publisher.On("Publish", ctx, m).
-		Return(messageId, nil)
+		Return(messageID, nil)
 
-	returnedMessageId, err := m.Publish(ctx, publisher)
+	returnedmessageID, err := m.Publish(ctx, publisher)
 	assert.NoError(t, err)
-	assert.Equal(t, messageId, returnedMessageId)
+	assert.Equal(t, messageID, returnedmessageID)
 
 	publisher.AssertExpectations(t)
 }

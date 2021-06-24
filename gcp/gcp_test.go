@@ -73,7 +73,7 @@ func (s *BackendTestSuite) TestReceive() {
 	err = s.publish(payload2, attributes2, "hedwig-dev-user-created-v1")
 	s.Require().NoError(err)
 
-	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload, attributes, mock.AnythingOfType("gcp.GCPMetadata")).
+	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload, attributes, mock.AnythingOfType("gcp.Metadata")).
 		// message must be acked or Receive never returns
 		Run(func(args mock.Arguments) {
 			err := s.backend.AckMessage(ctx, args.Get(3))
@@ -81,7 +81,7 @@ func (s *BackendTestSuite) TestReceive() {
 		}).
 		Return().
 		Once()
-	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload2, attributes2, mock.AnythingOfType("gcp.GCPMetadata")).
+	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload2, attributes2, mock.AnythingOfType("gcp.Metadata")).
 		// message must be acked or Receive never returns
 		Run(func(args mock.Arguments) {
 			err := s.backend.AckMessage(ctx, args.Get(3))
@@ -107,7 +107,7 @@ func (s *BackendTestSuite) TestReceive() {
 
 	s.fakeConsumerCallback.AssertExpectations(s.T())
 
-	providerMetadata := s.fakeConsumerCallback.Mock.Calls[0].Arguments.Get(3).(gcp.GCPMetadata)
+	providerMetadata := s.fakeConsumerCallback.Mock.Calls[0].Arguments.Get(3).(gcp.Metadata)
 	s.Equal(1, providerMetadata.DeliveryAttempt)
 }
 
@@ -126,7 +126,7 @@ func (s *BackendTestSuite) TestReceiveCrossProject() {
 	err := s.publish(payload, attributes, "hedwig-dev-user-created-v1")
 	s.Require().NoError(err)
 
-	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload, attributes, mock.AnythingOfType("gcp.GCPMetadata")).
+	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload, attributes, mock.AnythingOfType("gcp.Metadata")).
 		// message must be acked or Receive never returns
 		Run(func(args mock.Arguments) {
 			err := s.backend.AckMessage(ctx, args.Get(3))
@@ -150,7 +150,7 @@ func (s *BackendTestSuite) TestReceiveCrossProject() {
 
 	s.fakeConsumerCallback.AssertExpectations(s.T())
 
-	providerMetadata := s.fakeConsumerCallback.Mock.Calls[0].Arguments.Get(3).(gcp.GCPMetadata)
+	providerMetadata := s.fakeConsumerCallback.Mock.Calls[0].Arguments.Get(3).(gcp.Metadata)
 	s.Equal(1, providerMetadata.DeliveryAttempt)
 }
 
@@ -202,9 +202,9 @@ func (s *BackendTestSuite) TestPublish() {
 
 	msgTopic := "dev-user-created-v1"
 
-	messageId, err := s.backend.Publish(ctx, s.message, s.payload, s.attributes, msgTopic)
+	messageID, err := s.backend.Publish(ctx, s.message, s.payload, s.attributes, msgTopic)
 	s.NoError(err)
-	s.NotEmpty(messageId)
+	s.NotEmpty(messageID)
 
 	err = s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(ctx, func(_ context.Context, message *pubsub.Message) {
 		cancel()
@@ -227,9 +227,9 @@ func (s *BackendTestSuite) TestAck() {
 
 	msgTopic := "dev-user-created-v1"
 
-	messageId, err := s.backend.Publish(ctx, s.message, s.payload, s.attributes, msgTopic)
+	messageID, err := s.backend.Publish(ctx, s.message, s.payload, s.attributes, msgTopic)
 	s.NoError(err)
-	s.NotEmpty(messageId)
+	s.NotEmpty(messageID)
 
 	err = s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(ctx, func(_ context.Context, message *pubsub.Message) {
 		cancel()
@@ -261,11 +261,11 @@ func (s *BackendTestSuite) TestNack() {
 
 	msgTopic := "dev-user-created-v1"
 
-	messageId, err := s.backend.Publish(ctx, s.message, s.payload, s.attributes, msgTopic)
+	messageID, err := s.backend.Publish(ctx, s.message, s.payload, s.attributes, msgTopic)
 	s.NoError(err)
-	s.NotEmpty(messageId)
+	s.NotEmpty(messageID)
 
-	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), s.payload, s.attributes, mock.AnythingOfType("gcp.GCPMetadata")).
+	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), s.payload, s.attributes, mock.AnythingOfType("gcp.Metadata")).
 		Run(func(args mock.Arguments) {
 			err := s.backend.NackMessage(ctx, args.Get(3))
 			s.Require().NoError(err)

@@ -38,19 +38,19 @@ type sessionKey struct {
 	awsSessionToken string
 }
 
-// AWSSessionsCache is a cache that holds sessions
-type AWSSessionsCache struct {
+// SessionsCache is a cache that holds sessions
+type SessionsCache struct {
 	sessionMap sync.Map
 }
 
 // NewAWSSessionsCache creates a new session cache
-func NewAWSSessionsCache() *AWSSessionsCache {
-	return &AWSSessionsCache{
+func NewAWSSessionsCache() *SessionsCache {
+	return &SessionsCache{
 		sessionMap: sync.Map{},
 	}
 }
 
-func (c *AWSSessionsCache) getOrCreateSession(settings *hedwig.Settings) *session.Session {
+func (c *SessionsCache) getOrCreateSession(settings *hedwig.Settings) *session.Session {
 	key := sessionKey{awsRegion: settings.AWSRegion, awsAccessKeyID: settings.AWSAccessKey, awsSessionToken: settings.AWSSessionToken}
 	s, ok := c.sessionMap.Load(key)
 	if !ok {
@@ -61,6 +61,6 @@ func (c *AWSSessionsCache) getOrCreateSession(settings *hedwig.Settings) *sessio
 }
 
 // GetSession retrieves a session if it is cached, otherwise creates one
-func (c *AWSSessionsCache) GetSession(settings *hedwig.Settings) *session.Session {
+func (c *SessionsCache) GetSession(settings *hedwig.Settings) *session.Session {
 	return c.getOrCreateSession(settings)
 }

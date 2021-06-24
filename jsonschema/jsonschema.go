@@ -178,15 +178,17 @@ func NewEncoderFromBytes(schemaFile []byte, dataRegistry hedwig.DataFactoryRegis
 				return nil, err
 			}
 
-			if value, ok := schema.Extensions[xVersionKey]; !ok {
+			var value interface{}
+			var ok bool
+
+			if value, ok = schema.Extensions[xVersionKey]; !ok {
 				return nil, errors.Errorf("Missing x-version from schema definition for %s", messageType)
-			} else {
-				xVersion := value.(*semver.Version)
-				if xVersion.Major() != int64(majorVersion) {
-					return nil, errors.Errorf("Invalid x-version: %d.%d for: %s/%s",
-						xVersion.Major(), xVersion.Minor(), messageType, version,
-					)
-				}
+			}
+			xVersion := value.(*semver.Version)
+			if xVersion.Major() != int64(majorVersion) {
+				return nil, errors.Errorf("Invalid x-version: %d.%d for: %s/%s",
+					xVersion.Major(), xVersion.Minor(), messageType, version,
+				)
 			}
 
 			schemaKey := hedwig.MessageTypeMajorVersion{messageType, majorVersion}

@@ -59,40 +59,38 @@ type messageValidator struct {
 // decodeMetaAttributes decodes message transport attributes as MetaAttributes
 func (v *messageValidator) decodeMetaAttributes(attributes map[string]string) (MetaAttributes, error) {
 	metaAttrs := MetaAttributes{}
-	if value, ok := attributes["hedwig_format_version"]; !ok {
+	var value string
+	var ok bool
+	if value, ok = attributes["hedwig_format_version"]; !ok {
 		return metaAttrs, errors.New("value not found for attribute: 'hedwig_format_version'")
-	} else {
-		if version, err := semver.NewVersion(value); err != nil {
-			return metaAttrs, errors.Errorf("invalid value '%s' found for attribute: 'hedwig_format_version'", value)
-		} else {
-			metaAttrs.FormatVersion = version
-		}
 	}
-	if value, ok := attributes["hedwig_id"]; !ok {
+	var version *semver.Version
+	var err error
+	if version, err = semver.NewVersion(value); err != nil {
+		return metaAttrs, errors.Errorf("invalid value '%s' found for attribute: 'hedwig_format_version'", value)
+	}
+	metaAttrs.FormatVersion = version
+	if value, ok = attributes["hedwig_id"]; !ok {
 		return metaAttrs, errors.New("value not found for attribute: 'hedwig_id'")
-	} else {
-		metaAttrs.ID = value
 	}
-	if value, ok := attributes["hedwig_message_timestamp"]; !ok {
+	metaAttrs.ID = value
+	if value, ok = attributes["hedwig_message_timestamp"]; !ok {
 		return metaAttrs, errors.New("value not found for attribute: 'hedwig_id'")
-	} else {
-		if timestamp, err := strconv.ParseInt(value, 10, 64); err != nil {
-			return metaAttrs, errors.Errorf("invalid value '%s' found for attribute: 'hedwig_message_timestamp'", value)
-		} else {
-			unixTime := time.Unix(0, timestamp*int64(time.Millisecond))
-			metaAttrs.Timestamp = unixTime
-		}
 	}
-	if value, ok := attributes["hedwig_publisher"]; !ok {
+	var timestamp int64
+	if timestamp, err = strconv.ParseInt(value, 10, 64); err != nil {
+		return metaAttrs, errors.Errorf("invalid value '%s' found for attribute: 'hedwig_message_timestamp'", value)
+	}
+	unixTime := time.Unix(0, timestamp*int64(time.Millisecond))
+	metaAttrs.Timestamp = unixTime
+	if value, ok = attributes["hedwig_publisher"]; !ok {
 		return metaAttrs, errors.New("value not found for attribute: 'hedwig_publisher'")
-	} else {
-		metaAttrs.Publisher = value
 	}
-	if value, ok := attributes["hedwig_schema"]; !ok {
+	metaAttrs.Publisher = value
+	if value, ok = attributes["hedwig_schema"]; !ok {
 		return metaAttrs, errors.New("value not found for attribute: 'hedwig_schema'")
-	} else {
-		metaAttrs.Schema = value
 	}
+	metaAttrs.Schema = value
 
 	if len(attributes) != 0 {
 		metaAttrs.Headers = map[string]string{}

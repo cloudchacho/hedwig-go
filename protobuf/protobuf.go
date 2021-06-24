@@ -82,12 +82,13 @@ func NewMessageEncoder(protoMessages []protoreflect.Message) (hedwig.IEncoder, e
 		var majorVersion uint
 		if matches := messageNameRegex.FindStringSubmatch(string(desc.Name())); len(matches) > 0 {
 			messageType = matches[1]
-			if majorVersionSigned, err := strconv.Atoi(matches[2]); err != nil {
+			var err error
+			var majorVersionSigned int
+			if majorVersionSigned, err = strconv.Atoi(matches[2]); err != nil {
 				// will never happen, message name already passed regex
 				return nil, err
-			} else {
-				majorVersion = uint(majorVersionSigned)
 			}
+			majorVersion = uint(majorVersionSigned)
 		}
 		options := desc.Options().(*descriptorpb.MessageOptions)
 		hedwigMsgOpts := proto.GetExtension(options, E_MessageOptions).(*MessageOptions)

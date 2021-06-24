@@ -20,8 +20,8 @@ type gcpBackend struct {
 
 const defaultVisibilityTimeoutS = time.Second * 20
 
-// GCPMetadata is additional metadata associated with a message
-type GCPMetadata struct {
+// Metadata is additional metadata associated with a message
+type Metadata struct {
 	// Underlying pubsub message - ack id isn't exported so we have to store this object
 	pubsubMessage *pubsub.Message
 
@@ -51,11 +51,11 @@ func (g *gcpBackend) Publish(ctx context.Context, message *hedwig.Message, paylo
 			Attributes: attributes,
 		},
 	)
-	messageId, err := result.Get(ctx)
+	messageID, err := result.Get(ctx)
 	if err != nil {
 		return "", errors.Wrap(err, "Failed to publish message to Pub/Sub")
 	}
-	return messageId, nil
+	return messageID, nil
 }
 
 // Receive messages from configured queue(s) and provide it through the callback. This should run indefinitely
@@ -86,6 +86,7 @@ func (g *gcpBackend) Receive(ctx context.Context, numMessages uint32, visibility
 
 	for _, subscription := range subscriptions {
 		pubsubSubscription := g.client.Subscription(subscription)
+		pubsubSubscription.ReceiveSettings.NumGoroutines = 1
 		pubsubSubscription.ReceiveSettings.MaxOutstandingMessages = int(numMessages)
 		if visibilityTimeout != 0 {
 			pubsubSubscription.ReceiveSettings.MaxExtensionPeriod = visibilityTimeout
@@ -94,7 +95,7 @@ func (g *gcpBackend) Receive(ctx context.Context, numMessages uint32, visibility
 		}
 		group.Go(func() error {
 			recvErr := pubsubSubscription.Receive(gctx, func(ctx context.Context, message *pubsub.Message) {
-				metadata := GCPMetadata{
+				metadata := Metadata{
 					pubsubMessage:   message,
 					PublishTime:     message.PublishTime,
 					DeliveryAttempt: *message.DeliveryAttempt,
@@ -115,13 +116,13 @@ func (g *gcpBackend) Receive(ctx context.Context, numMessages uint32, visibility
 
 // NackMessage nacks a message on the queue
 func (g *gcpBackend) NackMessage(ctx context.Context, providerMetadata interface{}) error {
-	providerMetadata.(GCPMetadata).pubsubMessage.Nack()
+	providerMetadata.(Metadata).pubsubMessage.Nack()
 	return nil
 }
 
 // AckMessage acknowledges a message on the queue
 func (g *gcpBackend) AckMessage(ctx context.Context, providerMetadata interface{}) error {
-	providerMetadata.(GCPMetadata).pubsubMessage.Ack()
+	providerMetadata.(Metadata).pubsubMessage.Ack()
 	return nil
 }
 
@@ -150,7 +151,7 @@ func (g *gcpBackend) ensureClient(ctx context.Context) error {
 }
 
 // NewGCPBackend creates a backend for publishing and consuming from GCP
-// The provider metadata produced by this backend will have concrete type: gcp.GCPMetadata
+// The provider metadata produced by this backend will have concrete type: gcp.Metadata
 func NewGCPBackend(settings *hedwig.Settings) hedwig.IBackend {
 	return &gcpBackend{settings: settings}
 }

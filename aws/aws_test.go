@@ -96,10 +96,13 @@ func (fs *fakeSQS) SendMessageWithContext(ctx aws.Context, in *sqs.SendMessageIn
 	return args.Get(0).(*sqs.SendMessageOutput), args.Error(1)
 }
 
+// revive:disable:var-naming
 func (fs *fakeSQS) GetQueueUrlWithContext(ctx aws.Context, in *sqs.GetQueueUrlInput, opts ...request.Option) (*sqs.GetQueueUrlOutput, error) {
 	args := fs.Called(ctx, in, opts)
 	return args.Get(0).(*sqs.GetQueueUrlOutput), args.Error(1)
 }
+
+// revive:enable:var-naming
 
 func (fs *fakeSQS) ReceiveMessageWithContext(ctx aws.Context, in *sqs.ReceiveMessageInput, opts ...request.Option) (*sqs.ReceiveMessageOutput, error) {
 	args := fs.Called(ctx, in, opts)
@@ -151,11 +154,11 @@ func (s *BackendTestSuite) TestReceive() {
 	s.Require().NoError(err)
 	receiveCount := 1
 	body := `{"vehicle_id": "C_123"}`
-	messageId := "123"
+	messageID := "123"
 	sqsMessage := sqs.Message{
 		ReceiptHandle: aws.String(receiptHandle),
 		MessageAttributes: map[string]*sqs.MessageAttributeValue{
-			"foo": &sqs.MessageAttributeValue{StringValue: aws.String("bar")},
+			"foo": {StringValue: aws.String("bar")},
 		},
 		Attributes: map[string]*string{
 			sqs.MessageSystemAttributeNameApproximateFirstReceiveTimestamp: aws.String("1295500510456"),
@@ -163,15 +166,15 @@ func (s *BackendTestSuite) TestReceive() {
 			sqs.MessageSystemAttributeNameApproximateReceiveCount:          aws.String(strconv.Itoa(int(receiveCount))),
 		},
 		Body:      aws.String(body),
-		MessageId: aws.String(messageId),
+		MessageId: aws.String(messageID),
 	}
 	body2 := `vbI9vCDijJg=`
-	messageId2 := "456"
+	messageID2 := "456"
 	sqsMessage2 := sqs.Message{
 		ReceiptHandle: aws.String(receiptHandle),
 		MessageAttributes: map[string]*sqs.MessageAttributeValue{
-			"foo":             &sqs.MessageAttributeValue{StringValue: aws.String("bar")},
-			"hedwig_encoding": &sqs.MessageAttributeValue{StringValue: aws.String("base64")},
+			"foo":             {StringValue: aws.String("bar")},
+			"hedwig_encoding": {StringValue: aws.String("base64")},
 		},
 		Attributes: map[string]*string{
 			sqs.MessageSystemAttributeNameApproximateFirstReceiveTimestamp: aws.String("1295500510456"),
@@ -179,7 +182,7 @@ func (s *BackendTestSuite) TestReceive() {
 			sqs.MessageSystemAttributeNameApproximateReceiveCount:          aws.String(strconv.Itoa(int(receiveCount))),
 		},
 		Body:      aws.String(body2),
-		MessageId: aws.String(messageId2),
+		MessageId: aws.String(messageID2),
 	}
 	receiveOutput := &sqs.ReceiveMessageOutput{
 		Messages: []*sqs.Message{&sqsMessage, &sqsMessage2},
@@ -194,7 +197,7 @@ func (s *BackendTestSuite) TestReceive() {
 	attributes := map[string]string{
 		"foo": "bar",
 	}
-	providerMetadata := AWSMetadata{
+	providerMetadata := Metadata{
 		ReceiptHandle:    receiptHandle,
 		FirstReceiveTime: firstReceiveTime.UTC(),
 		SentTime:         sentTime.UTC(),
@@ -256,12 +259,12 @@ func (s *BackendTestSuite) TestReceiveFailedNonUTF8Decoding() {
 	}
 	receiveCount := 1
 	body := `foobar`
-	messageId := "123"
+	messageID := "123"
 	sqsMessage := sqs.Message{
 		ReceiptHandle: aws.String(receiptHandle),
 		MessageAttributes: map[string]*sqs.MessageAttributeValue{
-			"foo":             &sqs.MessageAttributeValue{StringValue: aws.String("bar")},
-			"hedwig_encoding": &sqs.MessageAttributeValue{StringValue: aws.String("base64")},
+			"foo":             {StringValue: aws.String("bar")},
+			"hedwig_encoding": {StringValue: aws.String("base64")},
 		},
 		Attributes: map[string]*string{
 			sqs.MessageSystemAttributeNameApproximateFirstReceiveTimestamp: aws.String("1295500510456"),
@@ -269,7 +272,7 @@ func (s *BackendTestSuite) TestReceiveFailedNonUTF8Decoding() {
 			sqs.MessageSystemAttributeNameApproximateReceiveCount:          aws.String(strconv.Itoa(int(receiveCount))),
 		},
 		Body:      aws.String(body),
-		MessageId: aws.String(messageId),
+		MessageId: aws.String(messageID),
 	}
 	receiveOutput := &sqs.ReceiveMessageOutput{Messages: []*sqs.Message{&sqsMessage}}
 	s.fakeSQS.On("ReceiveMessageWithContext", ctx, receiveInput, []request.Option(nil)).
@@ -452,11 +455,11 @@ func (s *BackendTestSuite) TestReceiveMissingAttributes() {
 	}
 	receiptHandle := "123"
 	body := `{"vehicle_id": "C_123"}`
-	messageId := "123"
+	messageID := "123"
 	sqsMessage := sqs.Message{
 		ReceiptHandle: aws.String(receiptHandle),
 		MessageAttributes: map[string]*sqs.MessageAttributeValue{
-			"foo": &sqs.MessageAttributeValue{StringValue: aws.String("bar")},
+			"foo": {StringValue: aws.String("bar")},
 		},
 		Attributes: map[string]*string{
 			sqs.MessageSystemAttributeNameApproximateFirstReceiveTimestamp: aws.String(""),
@@ -464,7 +467,7 @@ func (s *BackendTestSuite) TestReceiveMissingAttributes() {
 			sqs.MessageSystemAttributeNameApproximateReceiveCount:          aws.String(""),
 		},
 		Body:      aws.String(body),
-		MessageId: aws.String(messageId),
+		MessageId: aws.String(messageID),
 	}
 	receiveOutput := &sqs.ReceiveMessageOutput{
 		Messages: []*sqs.Message{&sqsMessage},
@@ -479,7 +482,7 @@ func (s *BackendTestSuite) TestReceiveMissingAttributes() {
 	attributes := map[string]string{
 		"foo": "bar",
 	}
-	providerMetadata := AWSMetadata{
+	providerMetadata := Metadata{
 		ReceiptHandle:    receiptHandle,
 		FirstReceiveTime: time.Time{},
 		SentTime:         time.Time{},
@@ -531,9 +534,9 @@ func (s *BackendTestSuite) TestPublish() {
 	s.fakeSNS.On("PublishWithContext", ctx, expectedSnsInput, mock.Anything).
 		Return(output, nil)
 
-	messageId, err := s.backend.Publish(ctx, s.message, s.payload, s.attributes, msgTopic)
+	messageID, err := s.backend.Publish(ctx, s.message, s.payload, s.attributes, msgTopic)
 	s.NoError(err)
-	s.Equal(messageId, "123")
+	s.Equal(messageID, "123")
 
 	s.fakeSNS.AssertExpectations(s.T())
 }
@@ -569,9 +572,9 @@ func (s *BackendTestSuite) TestPublishInvalidCharacters() {
 	s.fakeSNS.On("PublishWithContext", ctx, expectedSnsInput, mock.Anything).
 		Return(output, nil)
 
-	messageId, err := s.backend.Publish(ctx, s.message, invalidPayload, s.attributes, msgTopic)
+	messageID, err := s.backend.Publish(ctx, s.message, invalidPayload, s.attributes, msgTopic)
 	s.NoError(err)
-	s.Equal(messageId, "123")
+	s.Equal(messageID, "123")
 
 	s.fakeSNS.AssertExpectations(s.T())
 }
@@ -628,7 +631,7 @@ func (s *BackendTestSuite) TestAck() {
 	s.fakeSQS.On("DeleteMessageWithContext", ctx, deleteInput, mock.Anything).
 		Return(deleteOutput, nil)
 
-	err := s.backend.AckMessage(ctx, AWSMetadata{ReceiptHandle: receiptHandle})
+	err := s.backend.AckMessage(ctx, Metadata{ReceiptHandle: receiptHandle})
 	s.NoError(err)
 
 	s.fakeSQS.AssertExpectations(s.T())
@@ -657,7 +660,7 @@ func (s *BackendTestSuite) TestAckError() {
 	s.fakeSQS.On("DeleteMessageWithContext", ctx, deleteInput, mock.Anything).
 		Return((*sqs.DeleteMessageOutput)(nil), errors.New("failed to ack"))
 
-	err := s.backend.AckMessage(ctx, AWSMetadata{ReceiptHandle: receiptHandle})
+	err := s.backend.AckMessage(ctx, Metadata{ReceiptHandle: receiptHandle})
 	s.EqualError(err, "failed to ack")
 
 	s.fakeSQS.AssertExpectations(s.T())
@@ -675,7 +678,7 @@ func (s *BackendTestSuite) TestAckGetQueueError() {
 
 	receiptHandle := "foobar"
 
-	err := s.backend.AckMessage(ctx, AWSMetadata{ReceiptHandle: receiptHandle})
+	err := s.backend.AckMessage(ctx, Metadata{ReceiptHandle: receiptHandle})
 	s.EqualError(err, "failed to get SQS Queue URL: no internet")
 
 	s.fakeSQS.AssertExpectations(s.T())
@@ -686,7 +689,7 @@ func (s *BackendTestSuite) TestNack() {
 
 	receiptHandle := "foobar"
 
-	err := s.backend.NackMessage(ctx, AWSMetadata{ReceiptHandle: receiptHandle})
+	err := s.backend.NackMessage(ctx, Metadata{ReceiptHandle: receiptHandle})
 	s.NoError(err)
 
 	// no calls expected

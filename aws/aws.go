@@ -28,8 +28,8 @@ type awsBackend struct {
 	sns snsiface.SNSAPI
 }
 
-// AWSMetadata is additional metadata associated with a message
-type AWSMetadata struct {
+// Metadata is additional metadata associated with a message
+type Metadata struct {
 	// AWS receipt identifier
 	ReceiptHandle string
 
@@ -180,7 +180,7 @@ func (a *awsBackend) Receive(ctx context.Context, numMessages uint32, visibility
 						if err != nil {
 							receiveCount = -1
 						}
-						metadata := AWSMetadata{
+						metadata := Metadata{
 							*queueMessage.ReceiptHandle,
 							firstReceiveTime,
 							sentTime,
@@ -215,7 +215,7 @@ func (a *awsBackend) NackMessage(ctx context.Context, providerMetadata interface
 
 // AckMessage acknowledges a message on the queue
 func (a *awsBackend) AckMessage(ctx context.Context, providerMetadata interface{}) error {
-	receipt := providerMetadata.(AWSMetadata).ReceiptHandle
+	receipt := providerMetadata.(Metadata).ReceiptHandle
 	queueURL, err := a.getSQSQueueURL(ctx)
 	if err != nil {
 		return errors.Wrap(err, "failed to get SQS Queue URL")
@@ -228,8 +228,8 @@ func (a *awsBackend) AckMessage(ctx context.Context, providerMetadata interface{
 }
 
 // NewAWSBackend creates a backend for publishing and consuming from AWS
-// The provider metadata produced by this backend will have concrete type: aws.AWSMetadata
-func NewAWSBackend(settings *hedwig.Settings, sessionCache *AWSSessionsCache) hedwig.IBackend {
+// The provider metadata produced by this backend will have concrete type: aws.Metadata
+func NewAWSBackend(settings *hedwig.Settings, sessionCache *SessionsCache) hedwig.IBackend {
 
 	awsSession := sessionCache.GetSession(settings)
 
