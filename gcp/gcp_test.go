@@ -55,7 +55,7 @@ func (s *BackendTestSuite) publish(payload []byte, attributes map[string]string,
 }
 
 func (s *BackendTestSuite) TestReceive() {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx := context.Background()
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 
@@ -92,15 +92,15 @@ func (s *BackendTestSuite) TestReceive() {
 		// force method to return after just one loop
 		After(time.Millisecond * 110)
 
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(time.Millisecond*200))
+	defer cancel()
 	ch := make(chan bool)
 	go func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
-		s.EqualError(err, "context canceled")
+		s.Equal(err, context.DeadlineExceeded)
 		ch <- true
 		close(ch)
 	}()
-	time.Sleep(time.Millisecond * 500)
-	cancel()
 
 	// wait for co-routine to finish
 	<-ch
@@ -112,7 +112,7 @@ func (s *BackendTestSuite) TestReceive() {
 }
 
 func (s *BackendTestSuite) TestReceiveCrossProject() {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx := context.Background()
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 
@@ -135,15 +135,15 @@ func (s *BackendTestSuite) TestReceiveCrossProject() {
 		Return().
 		Once()
 
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(time.Millisecond*200))
+	defer cancel()
 	ch := make(chan bool)
 	go func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
-		s.EqualError(err, "context canceled")
+		s.Equal(err, context.DeadlineExceeded)
 		ch <- true
 		close(ch)
 	}()
-	time.Sleep(time.Millisecond * 500)
-	cancel()
 
 	// wait for co-routine to finish
 	<-ch
@@ -155,19 +155,18 @@ func (s *BackendTestSuite) TestReceiveCrossProject() {
 }
 
 func (s *BackendTestSuite) TestReceiveNoMessages() {
-	ctx, cancel := context.WithCancel(context.Background())
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Millisecond*200))
+	defer cancel()
 	ch := make(chan bool)
 	go func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
-		s.EqualError(err, "context canceled")
+		s.Equal(err, context.DeadlineExceeded)
 		ch <- true
 		close(ch)
 	}()
-	time.Sleep(time.Millisecond * 1)
-	cancel()
 
 	// wait for co-routine to finish
 	<-ch
@@ -223,7 +222,7 @@ func (s *BackendTestSuite) TestPublishFailure() {
 }
 
 func (s *BackendTestSuite) TestAck() {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx := context.Background()
 
 	msgTopic := "dev-user-created-v1"
 
@@ -231,14 +230,17 @@ func (s *BackendTestSuite) TestAck() {
 	s.NoError(err)
 	s.NotEmpty(messageID)
 
-	err = s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(ctx, func(_ context.Context, message *pubsub.Message) {
-		cancel()
+	ctx2, cancel2 := context.WithCancel(ctx)
+	err = s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(ctx2, func(_ context.Context, message *pubsub.Message) {
+		defer cancel2()
 		s.Equal(message.Data, s.payload)
 		s.Equal(message.Attributes, s.attributes)
 		message.Ack()
 	})
 	s.NoError(err)
 
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(time.Millisecond*200))
+	defer cancel()
 	ch := make(chan bool)
 	go func() {
 		err := s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(ctx, func(_ context.Context, message *pubsub.Message) {
@@ -247,15 +249,13 @@ func (s *BackendTestSuite) TestAck() {
 		ch <- true
 		s.Require().NoError(err)
 	}()
-	time.Sleep(time.Millisecond * 100)
-	cancel()
 
 	// wait for co-routine to finish
 	<-ch
 }
 
 func (s *BackendTestSuite) TestNack() {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx := context.Background()
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 
@@ -272,15 +272,15 @@ func (s *BackendTestSuite) TestNack() {
 		}).
 		Return()
 
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(time.Millisecond*200))
+	defer cancel()
 	ch := make(chan bool)
 	go func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
-		s.EqualError(err, "context canceled")
+		s.Equal(err, context.DeadlineExceeded)
 		ch <- true
 		close(ch)
 	}()
-	time.Sleep(time.Millisecond * 200)
-	cancel()
 
 	// wait for co-routine to finish
 	<-ch
