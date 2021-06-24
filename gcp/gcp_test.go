@@ -55,7 +55,7 @@ func (s *BackendTestSuite) publish(payload []byte, attributes map[string]string,
 }
 
 func (s *BackendTestSuite) TestReceive() {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx := context.Background()
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 
@@ -73,7 +73,7 @@ func (s *BackendTestSuite) TestReceive() {
 	err = s.publish(payload2, attributes2, "hedwig-dev-user-created-v1")
 	s.Require().NoError(err)
 
-	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload, attributes, mock.AnythingOfType("gcp.GCPMetadata")).
+	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload, attributes, mock.AnythingOfType("gcp.Metadata")).
 		// message must be acked or Receive never returns
 		Run(func(args mock.Arguments) {
 			err := s.backend.AckMessage(ctx, args.Get(3))
@@ -81,7 +81,7 @@ func (s *BackendTestSuite) TestReceive() {
 		}).
 		Return().
 		Once()
-	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload2, attributes2, mock.AnythingOfType("gcp.GCPMetadata")).
+	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload2, attributes2, mock.AnythingOfType("gcp.Metadata")).
 		// message must be acked or Receive never returns
 		Run(func(args mock.Arguments) {
 			err := s.backend.AckMessage(ctx, args.Get(3))
@@ -92,27 +92,27 @@ func (s *BackendTestSuite) TestReceive() {
 		// force method to return after just one loop
 		After(time.Millisecond * 110)
 
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(time.Millisecond*200))
+	defer cancel()
 	ch := make(chan bool)
 	go func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
-		s.EqualError(err, "context canceled")
+		s.True(err.Error() == "draining" || err == context.DeadlineExceeded)
 		ch <- true
 		close(ch)
 	}()
-	time.Sleep(time.Millisecond * 500)
-	cancel()
 
 	// wait for co-routine to finish
 	<-ch
 
 	s.fakeConsumerCallback.AssertExpectations(s.T())
 
-	providerMetadata := s.fakeConsumerCallback.Mock.Calls[0].Arguments.Get(3).(gcp.GCPMetadata)
+	providerMetadata := s.fakeConsumerCallback.Mock.Calls[0].Arguments.Get(3).(gcp.Metadata)
 	s.Equal(1, providerMetadata.DeliveryAttempt)
 }
 
 func (s *BackendTestSuite) TestReceiveCrossProject() {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx := context.Background()
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 
@@ -126,7 +126,7 @@ func (s *BackendTestSuite) TestReceiveCrossProject() {
 	err := s.publish(payload, attributes, "hedwig-dev-user-created-v1")
 	s.Require().NoError(err)
 
-	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload, attributes, mock.AnythingOfType("gcp.GCPMetadata")).
+	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload, attributes, mock.AnythingOfType("gcp.Metadata")).
 		// message must be acked or Receive never returns
 		Run(func(args mock.Arguments) {
 			err := s.backend.AckMessage(ctx, args.Get(3))
@@ -135,39 +135,38 @@ func (s *BackendTestSuite) TestReceiveCrossProject() {
 		Return().
 		Once()
 
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(time.Millisecond*200))
+	defer cancel()
 	ch := make(chan bool)
 	go func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
-		s.EqualError(err, "context canceled")
+		s.True(err.Error() == "draining" || err == context.DeadlineExceeded)
 		ch <- true
 		close(ch)
 	}()
-	time.Sleep(time.Millisecond * 500)
-	cancel()
 
 	// wait for co-routine to finish
 	<-ch
 
 	s.fakeConsumerCallback.AssertExpectations(s.T())
 
-	providerMetadata := s.fakeConsumerCallback.Mock.Calls[0].Arguments.Get(3).(gcp.GCPMetadata)
+	providerMetadata := s.fakeConsumerCallback.Mock.Calls[0].Arguments.Get(3).(gcp.Metadata)
 	s.Equal(1, providerMetadata.DeliveryAttempt)
 }
 
 func (s *BackendTestSuite) TestReceiveNoMessages() {
-	ctx, cancel := context.WithCancel(context.Background())
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Millisecond*200))
+	defer cancel()
 	ch := make(chan bool)
 	go func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
-		s.EqualError(err, "context canceled")
+		s.True(err.Error() == "draining" || err == context.DeadlineExceeded)
 		ch <- true
 		close(ch)
 	}()
-	time.Sleep(time.Millisecond * 1)
-	cancel()
 
 	// wait for co-routine to finish
 	<-ch
@@ -202,9 +201,9 @@ func (s *BackendTestSuite) TestPublish() {
 
 	msgTopic := "dev-user-created-v1"
 
-	messageId, err := s.backend.Publish(ctx, s.message, s.payload, s.attributes, msgTopic)
+	messageID, err := s.backend.Publish(ctx, s.message, s.payload, s.attributes, msgTopic)
 	s.NoError(err)
-	s.NotEmpty(messageId)
+	s.NotEmpty(messageID)
 
 	err = s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(ctx, func(_ context.Context, message *pubsub.Message) {
 		cancel()
@@ -223,22 +222,25 @@ func (s *BackendTestSuite) TestPublishFailure() {
 }
 
 func (s *BackendTestSuite) TestAck() {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx := context.Background()
 
 	msgTopic := "dev-user-created-v1"
 
-	messageId, err := s.backend.Publish(ctx, s.message, s.payload, s.attributes, msgTopic)
+	messageID, err := s.backend.Publish(ctx, s.message, s.payload, s.attributes, msgTopic)
 	s.NoError(err)
-	s.NotEmpty(messageId)
+	s.NotEmpty(messageID)
 
-	err = s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(ctx, func(_ context.Context, message *pubsub.Message) {
-		cancel()
+	ctx2, cancel2 := context.WithCancel(ctx)
+	err = s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(ctx2, func(_ context.Context, message *pubsub.Message) {
+		defer cancel2()
 		s.Equal(message.Data, s.payload)
 		s.Equal(message.Attributes, s.attributes)
 		message.Ack()
 	})
 	s.NoError(err)
 
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(time.Millisecond*200))
+	defer cancel()
 	ch := make(chan bool)
 	go func() {
 		err := s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(ctx, func(_ context.Context, message *pubsub.Message) {
@@ -247,40 +249,38 @@ func (s *BackendTestSuite) TestAck() {
 		ch <- true
 		s.Require().NoError(err)
 	}()
-	time.Sleep(time.Millisecond * 100)
-	cancel()
 
 	// wait for co-routine to finish
 	<-ch
 }
 
 func (s *BackendTestSuite) TestNack() {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx := context.Background()
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 
 	msgTopic := "dev-user-created-v1"
 
-	messageId, err := s.backend.Publish(ctx, s.message, s.payload, s.attributes, msgTopic)
+	messageID, err := s.backend.Publish(ctx, s.message, s.payload, s.attributes, msgTopic)
 	s.NoError(err)
-	s.NotEmpty(messageId)
+	s.NotEmpty(messageID)
 
-	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), s.payload, s.attributes, mock.AnythingOfType("gcp.GCPMetadata")).
+	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), s.payload, s.attributes, mock.AnythingOfType("gcp.Metadata")).
 		Run(func(args mock.Arguments) {
 			err := s.backend.NackMessage(ctx, args.Get(3))
 			s.Require().NoError(err)
 		}).
 		Return()
 
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(time.Millisecond*200))
+	defer cancel()
 	ch := make(chan bool)
 	go func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
-		s.EqualError(err, "context canceled")
+		s.True(err.Error() == "draining" || err == context.DeadlineExceeded)
 		ch <- true
 		close(ch)
 	}()
-	time.Sleep(time.Millisecond * 200)
-	cancel()
 
 	// wait for co-routine to finish
 	<-ch
@@ -414,7 +414,7 @@ func (s *BackendTestSuite) SetupTest() {
 	payload := []byte(`{"vehicle_id": "C_123"}`)
 	attributes := map[string]string{"foo": "bar"}
 
-	s.backend = gcp.NewGCPBackend(settings)
+	s.backend = gcp.NewBackend(settings)
 	s.settings = settings
 	s.message = message
 	s.validator = validator

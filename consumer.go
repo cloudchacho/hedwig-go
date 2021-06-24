@@ -57,7 +57,7 @@ func (c *queueConsumer) processMessage(ctx context.Context, payload []byte, attr
 		return
 	}
 
-	loggingFields = LoggingFields{"message_id": message.ID}
+	loggingFields = LoggingFields{"message_id": message.ID, "type": message.Type, "version": message.DataSchemaVersion}
 
 	callbackKey := MessageTypeMajorVersion{message.Type, uint(message.DataSchemaVersion.Major())}
 	var callback CallbackFunction

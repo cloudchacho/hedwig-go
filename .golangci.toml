@@ -17,6 +17,10 @@ locale = "US"
 check-shadowing = true
 disable = ["composites"]
 
+[linters-settings.goimports]
+
+local-prefixes = "github.com/cloudchacho/hedwig-go"
+
 [linters]
 
-enable = ["misspell"]
+enable = ["misspell", "gofmt", "goimports", "revive"]

@@ -29,14 +29,14 @@ func (s *PublisherTestSuite) TestPublish() {
 	s.validator.On("Serialize", message).
 		Return(payload, headers, nil)
 
-	messageId := "123"
+	messageID := "123"
 
 	s.backend.On("Publish", ctx, message, payload, headers, "dev-user-created-v1").
-		Return(messageId, nil)
+		Return(messageID, nil)
 
-	receivedMessageId, err := s.publisher.Publish(ctx, message)
+	receivedmessageID, err := s.publisher.Publish(ctx, message)
 	s.Nil(err)
-	s.Equal(messageId, receivedMessageId)
+	s.Equal(messageID, receivedmessageID)
 
 	s.backend.AssertExpectations(s.T())
 }

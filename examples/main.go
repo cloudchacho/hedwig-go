@@ -11,7 +11,7 @@ import (
 	"github.com/cloudchacho/hedwig-go/gcp"
 	"github.com/cloudchacho/hedwig-go/jsonschema"
 	"github.com/cloudchacho/hedwig-go/protobuf"
-	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/proto"
 )
 
 func settings(isProtobuf bool, publisherBackend string) *hedwig.Settings {
@@ -36,7 +36,7 @@ func settings(isProtobuf bool, publisherBackend string) *hedwig.Settings {
 		QueueName:          queueName,
 		Subscriptions:      []string{"dev-user-created-v1"},
 		MessageRouting: map[hedwig.MessageTypeMajorVersion]string{
-			hedwig.MessageTypeMajorVersion{
+			{
 				MessageType:  "user-created",
 				MajorVersion: 1,
 			}: "dev-user-created-v1",
@@ -94,7 +94,7 @@ func encoder(isProtobuf bool) hedwig.IEncoder {
 	factoryRegistry := registry(isProtobuf)
 	if isProtobuf {
 		encoder, err = protobuf.NewMessageEncoder(
-			[]protoreflect.Message{(&UserCreatedV1{}).ProtoReflect()},
+			[]proto.Message{&UserCreatedV1{}},
 		)
 	} else {
 		encoder, err = jsonschema.NewMessageEncoder("schema.json", factoryRegistry)
@@ -109,9 +109,9 @@ func encoder(isProtobuf bool) hedwig.IEncoder {
 func backend(settings *hedwig.Settings, publisherBackend string) hedwig.IBackend {
 	if publisherBackend == "aws" {
 		awsSessionCache := aws.NewAWSSessionsCache()
-		return aws.NewAWSBackend(settings, awsSessionCache)
+		return aws.NewBackend(settings, awsSessionCache)
 	} else if publisherBackend == "gcp" {
-		return gcp.NewGCPBackend(settings)
+		return gcp.NewBackend(settings)
 	} else {
 		panic(fmt.Sprintf("unknown backend name: %s", publisherBackend))
 	}
@@ -137,11 +137,11 @@ func runPublisher(isProtobuf bool, publisherBackend string) {
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create message: %v", err))
 	}
-	messageId, err := publisher.Publish(context.Background(), message)
+	messageID, err := publisher.Publish(context.Background(), message)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to publish message: %v", err))
 	}
-	fmt.Printf("Published message with id %s successfully with publish id: %s\n", message.ID, messageId)
+	fmt.Printf("Published message with id %s successfully with publish id: %s\n", message.ID, messageID)
 }
 
 func main() {
