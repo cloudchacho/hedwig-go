@@ -13,7 +13,7 @@ import (
 	"github.com/cloudchacho/hedwig-go"
 )
 
-type gcpBackend struct {
+type backend struct {
 	settings *hedwig.Settings
 	client   *pubsub.Client
 }
@@ -35,7 +35,7 @@ type Metadata struct {
 }
 
 // Publish a message represented by the payload, with specified attributes to the specific topic
-func (g *gcpBackend) Publish(ctx context.Context, message *hedwig.Message, payload []byte, attributes map[string]string, topic string) (string, error) {
+func (g *backend) Publish(ctx context.Context, message *hedwig.Message, payload []byte, attributes map[string]string, topic string) (string, error) {
 	err := g.ensureClient(ctx)
 	if err != nil {
 		return "", err
@@ -60,7 +60,7 @@ func (g *gcpBackend) Publish(ctx context.Context, message *hedwig.Message, paylo
 
 // Receive messages from configured queue(s) and provide it through the callback. This should run indefinitely
 // until the context is canceled. Provider metadata should include all info necessary to ack/nack a message.
-func (g *gcpBackend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback hedwig.ConsumerCallback) error {
+func (g *backend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback hedwig.ConsumerCallback) error {
 	err := g.ensureClient(ctx)
 	if err != nil {
 		return err
@@ -115,18 +115,18 @@ func (g *gcpBackend) Receive(ctx context.Context, numMessages uint32, visibility
 }
 
 // NackMessage nacks a message on the queue
-func (g *gcpBackend) NackMessage(ctx context.Context, providerMetadata interface{}) error {
+func (g *backend) NackMessage(ctx context.Context, providerMetadata interface{}) error {
 	providerMetadata.(Metadata).pubsubMessage.Nack()
 	return nil
 }
 
 // AckMessage acknowledges a message on the queue
-func (g *gcpBackend) AckMessage(ctx context.Context, providerMetadata interface{}) error {
+func (g *backend) AckMessage(ctx context.Context, providerMetadata interface{}) error {
 	providerMetadata.(Metadata).pubsubMessage.Ack()
 	return nil
 }
 
-func (g *gcpBackend) ensureClient(ctx context.Context) error {
+func (g *backend) ensureClient(ctx context.Context) error {
 	googleCloudProject := g.settings.GoogleCloudProject
 	if googleCloudProject == "" {
 		creds, err := google.FindDefaultCredentials(ctx)
@@ -150,8 +150,8 @@ func (g *gcpBackend) ensureClient(ctx context.Context) error {
 	return nil
 }
 
-// NewGCPBackend creates a backend for publishing and consuming from GCP
+// NewBackend creates a backend for publishing and consuming from GCP
 // The provider metadata produced by this backend will have concrete type: gcp.Metadata
-func NewGCPBackend(settings *hedwig.Settings) hedwig.IBackend {
-	return &gcpBackend{settings: settings}
+func NewBackend(settings *hedwig.Settings) hedwig.IBackend {
+	return &backend{settings: settings}
 }

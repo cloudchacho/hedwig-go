@@ -414,7 +414,7 @@ func (s *BackendTestSuite) SetupTest() {
 	payload := []byte(`{"vehicle_id": "C_123"}`)
 	attributes := map[string]string{"foo": "bar"}
 
-	s.backend = gcp.NewGCPBackend(settings)
+	s.backend = gcp.NewBackend(settings)
 	s.settings = settings
 	s.message = message
 	s.validator = validator

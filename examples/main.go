@@ -109,9 +109,9 @@ func encoder(isProtobuf bool) hedwig.IEncoder {
 func backend(settings *hedwig.Settings, publisherBackend string) hedwig.IBackend {
 	if publisherBackend == "aws" {
 		awsSessionCache := aws.NewAWSSessionsCache()
-		return aws.NewAWSBackend(settings, awsSessionCache)
+		return aws.NewBackend(settings, awsSessionCache)
 	} else if publisherBackend == "gcp" {
-		return gcp.NewGCPBackend(settings)
+		return gcp.NewBackend(settings)
 	} else {
 		panic(fmt.Sprintf("unknown backend name: %s", publisherBackend))
 	}
