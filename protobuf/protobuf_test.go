@@ -262,11 +262,11 @@ type EncoderTestSuite struct {
 }
 
 func (s *EncoderTestSuite) SetupTest() {
-	protoMsgs := []protoreflect.Message{
-		(&internal.TripCreatedV1{}).ProtoReflect(),
-		(&internal.TripCreatedV2{}).ProtoReflect(),
-		(&internal.DeviceCreatedV1{}).ProtoReflect(),
-		(&internal.VehicleCreatedV1{}).ProtoReflect(),
+	protoMsgs := []proto.Message{
+		&internal.TripCreatedV1{},
+		&internal.TripCreatedV2{},
+		&internal.DeviceCreatedV1{},
+		&internal.VehicleCreatedV1{},
 	}
 	encoder, err := protobuf.NewMessageEncoder(protoMsgs)
 	require.NoError(s.T(), err)
@@ -330,8 +330,8 @@ func TestNewMessageEncoderFromMessageTypesMajorVersionMismatch(t *testing.T) {
 
 func TestInvalidSchemaBadNameNoMessageType(t *testing.T) {
 	assertions := assert.New(t)
-	invalidProtoMsgs := []protoreflect.Message{
-		(&internal.DeviceCreated{}).ProtoReflect(),
+	invalidProtoMsgs := []proto.Message{
+		&internal.DeviceCreated{},
 	}
 	v, err := protobuf.NewMessageEncoder(invalidProtoMsgs)
 	assertions.Nil(v)
@@ -340,8 +340,8 @@ func TestInvalidSchemaBadNameNoMessageType(t *testing.T) {
 
 func TestInvalidSchemaBadNameNoMajorVersion(t *testing.T) {
 	assertions := assert.New(t)
-	invalidProtoMsgs := []protoreflect.Message{
-		(&internal.DeviceCreatedNew{}).ProtoReflect(),
+	invalidProtoMsgs := []proto.Message{
+		&internal.DeviceCreatedNew{},
 	}
 	v, err := protobuf.NewMessageEncoder(invalidProtoMsgs)
 	assertions.Nil(v)
@@ -350,8 +350,8 @@ func TestInvalidSchemaBadNameNoMajorVersion(t *testing.T) {
 
 func TestInvalidSchemaMajorVersionMismatch(t *testing.T) {
 	assertions := assert.New(t)
-	invalidProtoMsgs := []protoreflect.Message{
-		(&internal.TripCreatedV4{}).ProtoReflect(),
+	invalidProtoMsgs := []proto.Message{
+		&internal.TripCreatedV4{},
 	}
 	v, err := protobuf.NewMessageEncoder(invalidProtoMsgs)
 	assertions.Nil(v)
@@ -360,9 +360,9 @@ func TestInvalidSchemaMajorVersionMismatch(t *testing.T) {
 
 func TestInvalidSchemaDuplicate(t *testing.T) {
 	assertions := assert.New(t)
-	invalidProtoMsgs := []protoreflect.Message{
-		(&internal.TripCreatedV2{}).ProtoReflect(),
-		(&internal.TripCreatedV2New{}).ProtoReflect(),
+	invalidProtoMsgs := []proto.Message{
+		&internal.TripCreatedV2{},
+		&internal.TripCreatedV2New{},
 	}
 	v, err := protobuf.NewMessageEncoder(invalidProtoMsgs)
 	assertions.Nil(v)
