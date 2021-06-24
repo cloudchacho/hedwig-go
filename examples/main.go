@@ -11,7 +11,7 @@ import (
 	"github.com/cloudchacho/hedwig-go/gcp"
 	"github.com/cloudchacho/hedwig-go/jsonschema"
 	"github.com/cloudchacho/hedwig-go/protobuf"
-	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/proto"
 )
 
 func settings(isProtobuf bool, publisherBackend string) *hedwig.Settings {
@@ -94,7 +94,7 @@ func encoder(isProtobuf bool) hedwig.IEncoder {
 	factoryRegistry := registry(isProtobuf)
 	if isProtobuf {
 		encoder, err = protobuf.NewMessageEncoder(
-			[]protoreflect.Message{(&UserCreatedV1{}).ProtoReflect()},
+			[]proto.Message{&UserCreatedV1{}},
 		)
 	} else {
 		encoder, err = jsonschema.NewMessageEncoder("schema.json", factoryRegistry)

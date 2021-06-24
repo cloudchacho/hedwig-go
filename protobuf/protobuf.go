@@ -73,11 +73,11 @@ func NewMessageEncoderFromMessageTypes(protoMessages map[hedwig.MessageTypeMajor
 // This method will try to read message type from message_options, and if not specified,
 // assume that the messages are named as: `<MessageType>V<MajorVersion>`. If that doesn't work
 // for your use case, use NewMessageEncoderFromMessageTypes and provide an explicit mapping.
-func NewMessageEncoder(protoMessages []protoreflect.Message) (hedwig.IEncoder, error) {
+func NewMessageEncoder(protoMessages []proto.Message) (hedwig.IEncoder, error) {
 	protoMessagesMap := map[hedwig.MessageTypeMajorVersion]protoreflect.Message{}
 	versions := map[hedwig.MessageTypeMajorVersion]*semver.Version{}
 	for _, msg := range protoMessages {
-		desc := msg.Descriptor()
+		desc := msg.ProtoReflect().Descriptor()
 		var messageType string
 		var majorVersion uint
 		if matches := messageNameRegex.FindStringSubmatch(string(desc.Name())); len(matches) > 0 {
@@ -117,7 +117,7 @@ func NewMessageEncoder(protoMessages []protoreflect.Message) (hedwig.IEncoder, e
 		if _, ok := protoMessagesMap[schemaKey]; ok {
 			return nil, errors.Errorf("duplicate message found for %s %d", messageType, majorVersion)
 		}
-		protoMessagesMap[schemaKey] = msg
+		protoMessagesMap[schemaKey] = msg.ProtoReflect()
 		versions[schemaKey] = version
 	}
 	return &messageEncoder{protoMsgs: protoMessagesMap, versions: versions}, nil
