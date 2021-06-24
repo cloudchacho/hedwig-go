@@ -97,7 +97,7 @@ func (s *BackendTestSuite) TestReceive() {
 	ch := make(chan bool)
 	go func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
-		s.Equal(err, context.DeadlineExceeded)
+		s.True(err.Error() == "draining" || err == context.DeadlineExceeded)
 		ch <- true
 		close(ch)
 	}()
@@ -140,7 +140,7 @@ func (s *BackendTestSuite) TestReceiveCrossProject() {
 	ch := make(chan bool)
 	go func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
-		s.Equal(err, context.DeadlineExceeded)
+		s.True(err.Error() == "draining" || err == context.DeadlineExceeded)
 		ch <- true
 		close(ch)
 	}()
@@ -163,7 +163,7 @@ func (s *BackendTestSuite) TestReceiveNoMessages() {
 	ch := make(chan bool)
 	go func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
-		s.Equal(err, context.DeadlineExceeded)
+		s.True(err.Error() == "draining" || err == context.DeadlineExceeded)
 		ch <- true
 		close(ch)
 	}()
@@ -277,7 +277,7 @@ func (s *BackendTestSuite) TestNack() {
 	ch := make(chan bool)
 	go func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
-		s.Equal(err, context.DeadlineExceeded)
+		s.True(err.Error() == "draining" || err == context.DeadlineExceeded)
 		ch <- true
 		close(ch)
 	}()
