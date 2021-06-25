@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package main;
 
-import "cloudchacho/hedwig/protobuf/options.proto";
+import "hedwig/protobuf/options.proto";
 
 option go_package = "github.com/cloudchacho/hedwig-go/examples;main";
 

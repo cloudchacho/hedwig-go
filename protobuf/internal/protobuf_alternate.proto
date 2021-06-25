@@ -1,6 +1,6 @@
 syntax = "proto2";
 
-import "cloudchacho/hedwig/protobuf/options.proto";
+import "hedwig/protobuf/options.proto";
 
 option go_package = "github.com/cloudchacho/hedwig-go/protobuf/internal";
 
