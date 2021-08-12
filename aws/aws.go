@@ -52,6 +52,10 @@ func (a *backend) getSQSQueueName() string {
 	return fmt.Sprintf("HEDWIG-%s", a.settings.QueueName)
 }
 
+func (a *backend) getSQSDLQName() string {
+	return fmt.Sprintf("HEDWIG-%s-DLQ", a.settings.QueueName)
+}
+
 func (a *backend) getSNSTopic(messageTopic string) string {
 	return fmt.Sprintf("arn:aws:sns:%s:%s:hedwig-%s", a.settings.AWSRegion, a.settings.AWSAccountID, messageTopic)
 }
@@ -59,6 +63,16 @@ func (a *backend) getSNSTopic(messageTopic string) string {
 func (a *backend) getSQSQueueURL(ctx context.Context) (*string, error) {
 	out, err := a.sqs.GetQueueUrlWithContext(ctx, &sqs.GetQueueUrlInput{
 		QueueName: aws.String(a.getSQSQueueName()),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out.QueueUrl, nil
+}
+
+func (a *backend) getSQSDLQURL(ctx context.Context) (*string, error) {
+	out, err := a.sqs.GetQueueUrlWithContext(ctx, &sqs.GetQueueUrlInput{
+		QueueName: aws.String(a.getSQSDLQName()),
 	})
 	if err != nil {
 		return nil, err
@@ -133,76 +147,135 @@ func (a *backend) Receive(ctx context.Context, numMessages uint32, visibilityTim
 	}
 
 	for {
-		select {
-		case <-ctx.Done():
-			// if context was canceled, signal appropriately
+		if ctx.Err() != nil {
+			// if work was canceled because of context cancelation, signal that
 			return ctx.Err()
-		default:
-			if deadline, ok := ctx.Deadline(); ok {
-				// is shutting down?
-				if time.Until(deadline) < a.settings.ShutdownTimeout {
-					return errors.New("context shutting down")
+		}
+		out, err := a.sqs.ReceiveMessageWithContext(ctx, input)
+		if err != nil {
+			return errors.Wrap(err, "failed to receive SQS message")
+		}
+		wg := sync.WaitGroup{}
+		for i := range out.Messages {
+			if ctx.Err() != nil {
+				break
+			}
+			wg.Add(1)
+			queueMessage := out.Messages[i]
+			go func() {
+				defer wg.Done()
+				attributes := map[string]string{}
+				for k, v := range queueMessage.MessageAttributes {
+					attributes[k] = *v.StringValue
+				}
+				var firstReceiveTime time.Time
+				if firstReceiveTimestamp, err := strconv.Atoi(*queueMessage.Attributes[sqs.MessageSystemAttributeNameApproximateFirstReceiveTimestamp]); err != nil {
+					firstReceiveTime = time.Time{}
+				} else {
+					firstReceiveTime = time.Unix(0, int64(time.Duration(firstReceiveTimestamp)*time.Millisecond)).UTC()
+				}
+				var sentTime time.Time
+				if sentTimestamp, err := strconv.Atoi(*queueMessage.Attributes[sqs.MessageSystemAttributeNameSentTimestamp]); err != nil {
+					sentTime = time.Time{}
+				} else {
+					sentTime = time.Unix(0, int64(time.Duration(sentTimestamp)*time.Millisecond)).UTC()
+				}
+				receiveCount, err := strconv.Atoi(*queueMessage.Attributes[sqs.MessageSystemAttributeNameApproximateReceiveCount])
+				if err != nil {
+					receiveCount = -1
+				}
+				metadata := Metadata{
+					*queueMessage.ReceiptHandle,
+					firstReceiveTime,
+					sentTime,
+					receiveCount,
+				}
+				payload := []byte(*queueMessage.Body)
+				if encoding, ok := attributes["hedwig_encoding"]; ok && encoding == "base64" {
+					payload, err = base64.StdEncoding.DecodeString(string(payload))
+					if err != nil {
+						a.settings.GetLogger(ctx).Error(
+							err,
+							"Invalid message payload - couldn't decode using base64",
+							hedwig.LoggingFields{"message_id": queueMessage.MessageId},
+						)
+						return
+					}
+				}
+				callback(ctx, payload, attributes, metadata)
+			}()
+		}
+		wg.Wait()
+	}
+}
+
+// RequeueDLQ re-queues everything in the Hedwig DLQ back into the Hedwig queue
+func (a *backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration) error {
+	queueURL, err := a.getSQSQueueURL(ctx)
+	if err != nil {
+		return errors.Wrap(err, "failed to get SQS Queue URL")
+	}
+	dlqURL, err := a.getSQSDLQURL(ctx)
+	if err != nil {
+		return errors.Wrap(err, "failed to get SQS DLQ URL")
+	}
+	input := &sqs.ReceiveMessageInput{
+		MaxNumberOfMessages:   aws.Int64(int64(numMessages)),
+		QueueUrl:              dlqURL,
+		WaitTimeSeconds:       aws.Int64(sqsWaitTimeoutSeconds),
+		AttributeNames:        []*string{aws.String(sqs.QueueAttributeNameAll)},
+		MessageAttributeNames: []*string{aws.String(sqs.QueueAttributeNameAll)},
+	}
+	if visibilityTimeout != 0 {
+		input.VisibilityTimeout = aws.Int64(int64(visibilityTimeout.Seconds()))
+	}
+
+	for {
+		// if work was canceled because of context cancelation, signal that
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		out, err := a.sqs.ReceiveMessageWithContext(ctx, input)
+		if err != nil {
+			return errors.Wrap(err, "failed to receive SQS message")
+		}
+		if len(out.Messages) == 0 {
+			return nil
+		}
+		receipts := make(map[string]*string, len(out.Messages))
+		entries := make([]*sqs.SendMessageBatchRequestEntry, len(out.Messages))
+		for i, message := range out.Messages {
+			entries[i] = &sqs.SendMessageBatchRequestEntry{
+				Id:                aws.String(*message.MessageId),
+				MessageAttributes: message.MessageAttributes,
+				MessageBody:       aws.String(*message.Body),
+			}
+			receipts[*message.MessageId] = message.ReceiptHandle
+		}
+		sendInput := &sqs.SendMessageBatchInput{Entries: entries, QueueUrl: queueURL}
+		sendOut, err := a.sqs.SendMessageBatchWithContext(ctx, sendInput, request.WithResponseReadTimeout(a.settings.AWSReadTimeoutS))
+		if err != nil {
+			return errors.Wrap(err, "failed to send messages")
+		}
+		if len(sendOut.Successful) > 0 {
+			deleteEntries := make([]*sqs.DeleteMessageBatchRequestEntry, len(sendOut.Successful))
+			for i, successful := range sendOut.Successful {
+				deleteEntries[i] = &sqs.DeleteMessageBatchRequestEntry{
+					Id:            successful.Id,
+					ReceiptHandle: receipts[*successful.Id],
 				}
 			}
-			out, err := a.sqs.ReceiveMessageWithContext(ctx, input)
+			deleteInput := &sqs.DeleteMessageBatchInput{Entries: deleteEntries, QueueUrl: dlqURL}
+			deleteOutput, err := a.sqs.DeleteMessageBatchWithContext(ctx, deleteInput)
 			if err != nil {
-				return errors.Wrap(err, "failed to receive SQS message")
+				return errors.Wrap(err, "failed to ack messages")
 			}
-			wg := sync.WaitGroup{}
-			for i := range out.Messages {
-				select {
-				case <-ctx.Done():
-					wg.Wait()
-					// if context was canceled, signal appropriately
-					return ctx.Err()
-				default:
-					wg.Add(1)
-					queueMessage := out.Messages[i]
-					go func() {
-						defer wg.Done()
-						attributes := map[string]string{}
-						for k, v := range queueMessage.MessageAttributes {
-							attributes[k] = *v.StringValue
-						}
-						var firstReceiveTime time.Time
-						if firstReceiveTimestamp, err := strconv.Atoi(*queueMessage.Attributes[sqs.MessageSystemAttributeNameApproximateFirstReceiveTimestamp]); err != nil {
-							firstReceiveTime = time.Time{}
-						} else {
-							firstReceiveTime = time.Unix(0, int64(time.Duration(firstReceiveTimestamp)*time.Millisecond)).UTC()
-						}
-						var sentTime time.Time
-						if sentTimestamp, err := strconv.Atoi(*queueMessage.Attributes[sqs.MessageSystemAttributeNameSentTimestamp]); err != nil {
-							sentTime = time.Time{}
-						} else {
-							sentTime = time.Unix(0, int64(time.Duration(sentTimestamp)*time.Millisecond)).UTC()
-						}
-						receiveCount, err := strconv.Atoi(*queueMessage.Attributes[sqs.MessageSystemAttributeNameApproximateReceiveCount])
-						if err != nil {
-							receiveCount = -1
-						}
-						metadata := Metadata{
-							*queueMessage.ReceiptHandle,
-							firstReceiveTime,
-							sentTime,
-							receiveCount,
-						}
-						payload := []byte(*queueMessage.Body)
-						if encoding, ok := attributes["hedwig_encoding"]; ok && encoding == "base64" {
-							payload, err = base64.StdEncoding.DecodeString(string(payload))
-							if err != nil {
-								a.settings.GetLogger(ctx).Error(
-									err,
-									"Invalid message payload - couldn't decode using base64",
-									hedwig.LoggingFields{"message_id": queueMessage.MessageId},
-								)
-								return
-							}
-						}
-						callback(ctx, payload, attributes, metadata)
-					}()
-				}
+			if len(deleteOutput.Failed) > 0 {
+				return errors.New("failed to ack some messages")
 			}
-			wg.Wait()
+		}
+		if len(sendOut.Failed) > 0 {
+			return errors.New("failed to send some messages")
 		}
 	}
 }

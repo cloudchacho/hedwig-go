@@ -16,18 +16,22 @@ import (
 
 func createSession(
 	region string, awsAccessKey string, awsSecretAccessKey string, awsSessionToken string) *session.Session {
+	var creds *credentials.Credentials
+	if awsAccessKey != "" && awsSecretAccessKey != "" {
+		creds = credentials.NewStaticCredentialsFromCreds(
+			credentials.Value{
+				AccessKeyID:     awsAccessKey,
+				SecretAccessKey: awsSecretAccessKey,
+				SessionToken:    awsSessionToken,
+			},
+		)
+	}
 	return session.Must(session.NewSessionWithOptions(
 		session.Options{
 			Config: aws.Config{
-				Credentials: credentials.NewStaticCredentialsFromCreds(
-					credentials.Value{
-						AccessKeyID:     awsAccessKey,
-						SecretAccessKey: awsSecretAccessKey,
-						SessionToken:    awsSessionToken,
-					},
-				),
-				Region:     aws.String(region),
-				DisableSSL: aws.Bool(false),
+				Credentials: creds,
+				Region:      aws.String(region),
+				DisableSSL:  aws.Bool(false),
 			},
 		}))
 }

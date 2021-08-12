@@ -1,10 +1,14 @@
 package gcp_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/cloudchacho/hedwig-go/internal/testutils"
 
 	"cloud.google.com/go/pubsub"
 	"github.com/stretchr/testify/assert"
@@ -92,18 +96,12 @@ func (s *BackendTestSuite) TestReceive() {
 		// force method to return after just one loop
 		After(time.Millisecond * 110)
 
-	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(time.Millisecond*200))
+	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*200)
 	defer cancel()
-	ch := make(chan bool)
-	go func() {
+	testutils.RunAndWait(func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
 		s.True(err.Error() == "draining" || err == context.DeadlineExceeded)
-		ch <- true
-		close(ch)
-	}()
-
-	// wait for co-routine to finish
-	<-ch
+	})
 
 	s.fakeConsumerCallback.AssertExpectations(s.T())
 
@@ -135,18 +133,12 @@ func (s *BackendTestSuite) TestReceiveCrossProject() {
 		Return().
 		Once()
 
-	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(time.Millisecond*200))
+	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*200)
 	defer cancel()
-	ch := make(chan bool)
-	go func() {
+	testutils.RunAndWait(func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
 		s.True(err.Error() == "draining" || err == context.DeadlineExceeded)
-		ch <- true
-		close(ch)
-	}()
-
-	// wait for co-routine to finish
-	<-ch
+	})
 
 	s.fakeConsumerCallback.AssertExpectations(s.T())
 
@@ -158,18 +150,12 @@ func (s *BackendTestSuite) TestReceiveNoMessages() {
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Millisecond*200))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*200)
 	defer cancel()
-	ch := make(chan bool)
-	go func() {
+	testutils.RunAndWait(func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
 		s.True(err.Error() == "draining" || err == context.DeadlineExceeded)
-		ch <- true
-		close(ch)
-	}()
-
-	// wait for co-routine to finish
-	<-ch
+	})
 
 	s.fakeConsumerCallback.AssertExpectations(s.T())
 }
@@ -182,18 +168,108 @@ func (s *BackendTestSuite) TestReceiveError() {
 	s.settings.QueueName = "does-not-exist"
 	s.settings.Subscriptions = nil
 
-	ch := make(chan bool)
-	go func() {
+	testutils.RunAndWait(func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
 		s.EqualError(err, "rpc error: code = NotFound desc = Subscription does not exist (resource=hedwig-does-not-exist)")
-		ch <- true
-		close(ch)
-	}()
-
-	// wait for co-routine to finish
-	<-ch
+	})
 
 	s.fakeConsumerCallback.AssertExpectations(s.T())
+}
+
+func (s *BackendTestSuite) TestRequeueDLQ() {
+	ctx := context.Background()
+	numMessages := uint32(10)
+	visibilityTimeout := time.Second * 10
+
+	payload := []byte(`{"vehicle_id": "C_123"}`)
+	attributes := map[string]string{
+		"foo": "bar",
+	}
+	err := s.publish(payload, attributes, "hedwig-dev-myapp-dlq")
+	s.Require().NoError(err)
+
+	payload2 := []byte("\xbd\xb2\x3d\xbc\x20\xe2\x8c\x98")
+	attributes2 := map[string]string{
+		"foo": "bar",
+	}
+	err = s.publish(payload2, attributes2, "hedwig-dev-myapp-dlq")
+	s.Require().NoError(err)
+
+	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*200)
+	defer cancel()
+	testutils.RunAndWait(func() {
+		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
+		s.True(err.Error() == "draining" || err == context.DeadlineExceeded)
+	})
+
+	received := [2]int32{}
+	ctx, cancel = context.WithTimeout(context.Background(), time.Millisecond*200)
+	defer cancel()
+	err = s.client.Subscription("hedwig-dev-myapp").Receive(ctx, func(_ context.Context, message *pubsub.Message) {
+		if bytes.Equal(message.Data, payload) {
+			atomic.AddInt32(&received[0], 1)
+			s.Equal(message.Attributes, attributes)
+		} else {
+			s.Equal(message.Data, payload2)
+			s.Equal(message.Attributes, attributes2)
+			atomic.AddInt32(&received[1], 1)
+		}
+		if atomic.LoadInt32(&received[0]) >= 1 && atomic.LoadInt32(&received[0]) >= 1 {
+			cancel()
+		}
+		message.Ack()
+	})
+	s.Require().NoError(err)
+}
+
+func (s *BackendTestSuite) TestRequeueDLQNoMessages() {
+	numMessages := uint32(10)
+	visibilityTimeout := time.Second * 10
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+	testutils.RunAndWait(func() {
+		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
+		s.NoError(err)
+	})
+}
+
+func (s *BackendTestSuite) TestRequeueDLQReceiveError() {
+	ctx := context.Background()
+	numMessages := uint32(10)
+	visibilityTimeout := time.Second * 10
+
+	s.settings.QueueName = "does-not-exist"
+	s.settings.Subscriptions = nil
+
+	testutils.RunAndWait(func() {
+		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
+		s.EqualError(err, "rpc error: code = NotFound desc = Subscription does not exist (resource=hedwig-does-not-exist-dlq)")
+	})
+
+	s.fakeConsumerCallback.AssertExpectations(s.T())
+}
+
+func (s *BackendTestSuite) TestRequeueDLQPublishError() {
+	ctx := context.Background()
+	numMessages := uint32(10)
+	visibilityTimeout := time.Second * 10
+
+	payload := []byte(`{"vehicle_id": "C_123"}`)
+	attributes := map[string]string{
+		"foo": "bar",
+	}
+	err := s.publish(payload, attributes, "hedwig-dev-myapp-dlq")
+	s.Require().NoError(err)
+
+	topic := s.client.Topic("hedwig-dev-myapp")
+	err = topic.Delete(ctx)
+	s.Require().NoError(err)
+
+	testutils.RunAndWait(func() {
+		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
+		s.EqualError(err, "rpc error: code = NotFound desc = Topic not found")
+	})
 }
 
 func (s *BackendTestSuite) TestPublish() {
@@ -239,19 +315,14 @@ func (s *BackendTestSuite) TestAck() {
 	})
 	s.NoError(err)
 
-	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(time.Millisecond*200))
+	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*200)
 	defer cancel()
-	ch := make(chan bool)
-	go func() {
+	testutils.RunAndWait(func() {
 		err := s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(ctx, func(_ context.Context, message *pubsub.Message) {
 			s.Fail("shouldn't have received any message")
 		})
-		ch <- true
 		s.Require().NoError(err)
-	}()
-
-	// wait for co-routine to finish
-	<-ch
+	})
 }
 
 func (s *BackendTestSuite) TestNack() {
@@ -272,18 +343,12 @@ func (s *BackendTestSuite) TestNack() {
 		}).
 		Return()
 
-	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(time.Millisecond*200))
+	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*200)
 	defer cancel()
-	ch := make(chan bool)
-	go func() {
+	testutils.RunAndWait(func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
 		s.True(err.Error() == "draining" || err == context.DeadlineExceeded)
-		ch <- true
-		close(ch)
-	}()
-
-	// wait for co-routine to finish
-	<-ch
+	})
 
 	s.fakeConsumerCallback.AssertExpectations(s.T())
 }

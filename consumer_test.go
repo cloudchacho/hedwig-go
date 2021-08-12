@@ -86,6 +86,11 @@ func (b *fakeBackend) Publish(ctx context.Context, message *Message, payload []b
 	return args.String(0), args.Error(1)
 }
 
+func (b *fakeBackend) RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration) error {
+	args := b.Called(ctx, numMessages, visibilityTimeout)
+	return args.Error(0)
+}
+
 func (s *ConsumerTestSuite) TestProcessMessage() {
 	ctx := context.Background()
 	payload := []byte(`foobar`)

@@ -21,10 +21,14 @@ type ListenRequest struct {
 type IQueueConsumer interface {
 	// ListenForMessages starts a hedwig listener for the provided message types
 	//
-	// This function never returns by default. Possible shutdown methods:
-	// 1. Cancel the context - returns immediately.
-	// 2. Set a deadline on the context of less than 10 seconds - returns after processing current messages.
+	// This function never returns by default. It can be shut down by canceling the context.
 	ListenForMessages(ctx context.Context, request ListenRequest) error
+
+	// RequeueDLQ re-queues everything in the Hedwig DLQ back into the Hedwig queue
+	//
+	// This function runs until there are no more messages in the dead letter queue.
+	// It can be aborted by canceling the context
+	RequeueDLQ(ctx context.Context, request ListenRequest) error
 }
 
 type consumer struct {
@@ -91,6 +95,15 @@ func (c *queueConsumer) ListenForMessages(ctx context.Context, request ListenReq
 	}
 
 	return c.backend.Receive(ctx, request.NumMessages, request.VisibilityTimeout, c.processMessage)
+}
+
+// RequeueDLQ re-queues everything in the Hedwig DLQ back into the Hedwig queue
+func (c *queueConsumer) RequeueDLQ(ctx context.Context, request ListenRequest) error {
+	if request.NumMessages == 0 {
+		request.NumMessages = 1
+	}
+
+	return c.backend.RequeueDLQ(ctx, request.NumMessages, request.VisibilityTimeout)
 }
 
 func wrapCallback(function CallbackFunction) CallbackFunction {
