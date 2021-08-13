@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -29,6 +30,42 @@ type fakeHedwigDataField struct {
 
 type fakeValidator struct {
 	mock.Mock
+}
+
+type fakeLog struct {
+	level   string
+	err     error
+	message string
+	fields  hedwig.LoggingFields
+}
+
+type fakeLogger struct {
+	lock sync.Mutex
+	logs []fakeLog
+}
+
+func (f *fakeLogger) Error(err error, message string, fields hedwig.LoggingFields) {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.logs = append(f.logs, fakeLog{"error", err, message, fields})
+}
+
+func (f *fakeLogger) Warn(err error, message string, fields hedwig.LoggingFields) {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.logs = append(f.logs, fakeLog{"warn", err, message, fields})
+}
+
+func (f *fakeLogger) Info(message string, fields hedwig.LoggingFields) {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.logs = append(f.logs, fakeLog{"info", nil, message, fields})
+}
+
+func (f *fakeLogger) Debug(message string, fields hedwig.LoggingFields) {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.logs = append(f.logs, fakeLog{"debug", nil, message, fields})
 }
 
 type fakeConsumerCallback struct {
@@ -133,7 +170,7 @@ func (s *BackendTestSuite) TestReceiveCrossProject() {
 		Return().
 		Once()
 
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*200)
+	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*500)
 	defer cancel()
 	testutils.RunAndWait(func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
@@ -458,6 +495,8 @@ func (s *BackendTestSuite) TearDownSuite() {
 }
 
 func (s *BackendTestSuite) SetupTest() {
+	logger := &fakeLogger{}
+
 	settings := &hedwig.Settings{
 		GoogleCloudProject: "emulator-project",
 		QueueName:          "dev-myapp",
@@ -469,6 +508,7 @@ func (s *BackendTestSuite) SetupTest() {
 		},
 		Subscriptions:   []string{"dev-user-created-v1"},
 		ShutdownTimeout: time.Second * 10,
+		GetLogger:       func(_ context.Context) hedwig.ILogger { return logger },
 	}
 	fakeMessageCallback := &fakeConsumerCallback{}
 	message, err := hedwig.NewMessage(settings, "user-created", "1.0", map[string]string{"foo": "bar"}, &fakeHedwigDataField{})
