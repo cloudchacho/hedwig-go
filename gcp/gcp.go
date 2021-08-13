@@ -170,7 +170,7 @@ func (g *backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 		defer wg.Done()
 		for {
 			select {
-			case <-ticker.C:
+			case <-progressTicker.C:
 				g.settings.GetLogger(ctx).Info("Re-queue DLQ progress", hedwig.LoggingFields{"num_messages": atomic.LoadUint32(&numMessagesRequeued)})
 			case <-rctx.Done():
 				return
