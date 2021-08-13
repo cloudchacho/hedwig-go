@@ -198,7 +198,7 @@ func (s *BackendTestSuite) TestRequeueDLQ() {
 	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*200)
 	defer cancel()
 	testutils.RunAndWait(func() {
-		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
+		err = s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
 		s.True(err.Error() == "draining" || err == context.DeadlineExceeded)
 	})
 
@@ -214,7 +214,7 @@ func (s *BackendTestSuite) TestRequeueDLQ() {
 			s.Equal(message.Attributes, attributes2)
 			atomic.AddInt32(&received[1], 1)
 		}
-		if atomic.LoadInt32(&received[0]) >= 1 && atomic.LoadInt32(&received[0]) >= 1 {
+		if atomic.LoadInt32(&received[0]) >= 1 && atomic.LoadInt32(&received[1]) >= 1 {
 			cancel()
 		}
 		message.Ack()
