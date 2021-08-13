@@ -229,6 +229,7 @@ func (a *backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 	if visibilityTimeout != 0 {
 		input.VisibilityTimeout = aws.Int64(int64(visibilityTimeout.Seconds()))
 	}
+	var numMessagesRequeued uint32
 
 	for {
 		// if work was canceled because of context cancelation, signal that
@@ -277,6 +278,8 @@ func (a *backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 		if len(sendOut.Failed) > 0 {
 			return errors.New("failed to send some messages")
 		}
+		numMessagesRequeued += uint32(len(sendOut.Successful))
+		a.settings.GetLogger(ctx).Info("Re-queue DLQ progress", hedwig.LoggingFields{"num_messages": numMessagesRequeued})
 	}
 }
 

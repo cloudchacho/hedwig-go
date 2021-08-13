@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"cloud.google.com/go/pubsub"
@@ -144,12 +145,12 @@ func (g *backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 	defer ticker.Stop()
 
 	wg := sync.WaitGroup{}
-	wg.Add(1)
 	defer wg.Wait()
 
 	rctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	wg.Add(1)
 	go func() {
 		select {
 		case <-ticker.C:
@@ -157,6 +158,24 @@ func (g *backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 		case <-rctx.Done():
 		}
 		wg.Done()
+	}()
+
+	var numMessagesRequeued uint32
+
+	progressTicker := time.NewTicker(time.Second * 1)
+	defer progressTicker.Stop()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-ticker.C:
+				g.settings.GetLogger(ctx).Info("Re-queue DLQ progress", hedwig.LoggingFields{"num_messages": atomic.LoadUint32(&numMessagesRequeued)})
+			case <-rctx.Done():
+				return
+			}
+		}
 	}()
 
 	publishErrCh := make(chan error, 10)
@@ -171,6 +190,7 @@ func (g *backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 			publishErrCh <- err
 		} else {
 			message.Ack()
+			atomic.AddUint32(&numMessagesRequeued, 1)
 		}
 	})
 	if err != nil {
