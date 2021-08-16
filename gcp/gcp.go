@@ -3,6 +3,8 @@ package gcp
 import (
 	"context"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"cloud.google.com/go/pubsub"
@@ -111,6 +113,97 @@ func (g *backend) Receive(ctx context.Context, numMessages uint32, visibilityTim
 		return err
 	}
 	// context cancelation doesn't return error in the group
+	return ctx.Err()
+}
+
+// RequeueDLQ re-queues everything in the Hedwig DLQ back into the Hedwig queue
+func (g *backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration) error {
+	err := g.ensureClient(ctx)
+	if err != nil {
+		return err
+	}
+
+	defer g.client.Close()
+
+	clientTopic := g.client.Topic(fmt.Sprintf("hedwig-%s", g.settings.QueueName))
+	defer clientTopic.Stop()
+
+	clientTopic.PublishSettings.CountThreshold = int(numMessages)
+	if visibilityTimeout != 0 {
+		clientTopic.PublishSettings.Timeout = visibilityTimeout
+	} else {
+		clientTopic.PublishSettings.Timeout = defaultVisibilityTimeoutS
+	}
+
+	pubsubSubscription := g.client.Subscription(fmt.Sprintf("hedwig-%s-dlq", g.settings.QueueName))
+	pubsubSubscription.ReceiveSettings.MaxOutstandingMessages = int(numMessages)
+	pubsubSubscription.ReceiveSettings.MaxExtensionPeriod = clientTopic.PublishSettings.Timeout
+
+	// run a ticker that will fire after timeout and shutdown subscriber
+	overallTimeout := time.Second * 5
+	ticker := time.NewTicker(overallTimeout)
+	defer ticker.Stop()
+
+	wg := sync.WaitGroup{}
+	defer wg.Wait()
+
+	rctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	wg.Add(1)
+	go func() {
+		select {
+		case <-ticker.C:
+			cancel()
+		case <-rctx.Done():
+		}
+		wg.Done()
+	}()
+
+	var numMessagesRequeued uint32
+
+	progressTicker := time.NewTicker(time.Second * 1)
+	defer progressTicker.Stop()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-progressTicker.C:
+				g.settings.GetLogger(ctx).Info("Re-queue DLQ progress", hedwig.LoggingFields{"num_messages": atomic.LoadUint32(&numMessagesRequeued)})
+			case <-rctx.Done():
+				return
+			}
+		}
+	}()
+
+	publishErrCh := make(chan error, 10)
+	defer close(publishErrCh)
+	err = pubsubSubscription.Receive(rctx, func(ctx context.Context, message *pubsub.Message) {
+		ticker.Reset(overallTimeout)
+		result := clientTopic.Publish(rctx, message)
+		_, err := result.Get(rctx)
+		if err != nil {
+			message.Nack()
+			cancel()
+			publishErrCh <- err
+		} else {
+			message.Ack()
+			atomic.AddUint32(&numMessagesRequeued, 1)
+		}
+	})
+	if err != nil {
+		return err
+	}
+	// if publish failed, signal that
+	select {
+	case err = <-publishErrCh:
+		return err
+	default:
+	}
+	// context cancelation doesn't return error in Receive, don't return error from rctx since cancelation is happy
+	// path
 	return ctx.Err()
 }
 

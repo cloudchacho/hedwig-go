@@ -41,8 +41,9 @@ The modules in this directory let you run Hedwig with a real backend.
     $ AWS_ACCOUNT_ID=$(aws sts get-caller-identity | jq -r '.Account')
     $ aws sns create-topic --name hedwig-dev-user-created-v1
     $ aws sqs create-queue --queue-name HEDWIG-DEV-MYAPP
+    $ aws sqs create-queue --queue-name HEDWIG-DEV-MYAPP-DLQ
     $ aws sns subscribe --topic-arn arn:aws:sns:$AWS_REGION:$AWS_ACCOUNT_ID:hedwig-dev-user-created-v1 --protocol sqs --notification-endpoint arn:aws:sqs:$AWS_REGION:$AWS_ACCOUNT_ID:HEDWIG-DEV-MYAPP --attributes RawMessageDelivery=true
-    $ aws sqs set-queue-attributes --queue-url https://$AWS_REGION.queue.amazonaws.com/$AWS_ACCOUNT_ID/HEDWIG-DEV-MYAPP --attributes "{\"Policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Action\\\":[\\\"sqs:SendMessage\\\",\\\"sqs:SendMessageBatch\\\"],\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":\\\"arn:aws:sqs:$AWS_REGION:$AWS_ACCOUNT_ID:HEDWIG-DEV-MYAPP\\\",\\\"Principal\\\":{\\\"Service\\\":[\\\"sns.amazonaws.com\\\"]}}]}\"}"
+    $ aws sqs set-queue-attributes --queue-url https://$AWS_REGION.queue.amazonaws.com/$AWS_ACCOUNT_ID/HEDWIG-DEV-MYAPP --attributes "{\"Policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Action\\\":[\\\"sqs:SendMessage\\\",\\\"sqs:SendMessageBatch\\\"],\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":\\\"arn:aws:sqs:$AWS_REGION:$AWS_ACCOUNT_ID:HEDWIG-DEV-MYAPP\\\",\\\"Principal\\\":{\\\"Service\\\":[\\\"sns.amazonaws.com\\\"]}}]}\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"arn:aws:sqs:$AWS_REGION:$AWS_ACCOUNT_ID:HEDWIG-DEV-MYAPP-DLQ\\\",\\\"maxReceiveCount\\\":\\\"5\\\"}\"}"
     ```
 
 ## Run

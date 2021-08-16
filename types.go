@@ -59,4 +59,7 @@ type IBackend interface {
 
 	// Publish a message represented by the payload, with specified attributes to the specific topic
 	Publish(ctx context.Context, message *Message, payload []byte, attributes map[string]string, topic string) (string, error)
+
+	// RequeueDLQ re-queues everything in the Hedwig DLQ back into the Hedwig queue
+	RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration) error
 }

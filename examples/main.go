@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -14,12 +15,12 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func settings(isProtobuf bool, publisherBackend string) *hedwig.Settings {
-	handler := &handler{isProtobuf: isProtobuf}
+func settings(isProtobuf bool, backendName string, fakeCallbackErr string) *hedwig.Settings {
+	handler := &handler{isProtobuf: isProtobuf, fakeCallbackErr: fakeCallbackErr}
 	callbackRegistry := hedwig.CallbackRegistry{{"user-created", 1}: handler.userCreated}
 	useMessageAttributes := true
 	var queueName string
-	if publisherBackend == "aws" {
+	if backendName == "aws" {
 		queueName = "DEV-MYAPP"
 	} else {
 		queueName = "dev-myapp"
@@ -62,10 +63,14 @@ func registry(isProtobuf bool) hedwig.DataFactoryRegistry {
 }
 
 type handler struct {
-	isProtobuf bool
+	isProtobuf      bool
+	fakeCallbackErr string
 }
 
 func (h *handler) userCreated(ctx context.Context, message *hedwig.Message) error {
+	if h.fakeCallbackErr != "" {
+		return errors.New(h.fakeCallbackErr)
+	}
 	var userID string
 	if h.isProtobuf {
 		userID = message.Data.(*UserCreatedV1).UserId
@@ -106,20 +111,20 @@ func encoder(isProtobuf bool) hedwig.IEncoder {
 
 }
 
-func backend(settings *hedwig.Settings, publisherBackend string) hedwig.IBackend {
-	if publisherBackend == "aws" {
+func backend(settings *hedwig.Settings, backendName string) hedwig.IBackend {
+	if backendName == "aws" {
 		awsSessionCache := aws.NewAWSSessionsCache()
 		return aws.NewBackend(settings, awsSessionCache)
-	} else if publisherBackend == "gcp" {
+	} else if backendName == "gcp" {
 		return gcp.NewBackend(settings)
 	} else {
-		panic(fmt.Sprintf("unknown backend name: %s", publisherBackend))
+		panic(fmt.Sprintf("unknown backend name: %s", backendName))
 	}
 }
 
-func runConsumer(isProtobuf bool, publisherBackend string) {
-	settings := settings(isProtobuf, publisherBackend)
-	backend := backend(settings, publisherBackend)
+func runConsumer(isProtobuf bool, backendName string, fakeCallbackErr string) {
+	settings := settings(isProtobuf, backendName, fakeCallbackErr)
+	backend := backend(settings, backendName)
 	consumer := hedwig.NewQueueConsumer(settings, backend, encoder(isProtobuf))
 	err := consumer.ListenForMessages(context.Background(), hedwig.ListenRequest{})
 	if err != nil {
@@ -127,10 +132,10 @@ func runConsumer(isProtobuf bool, publisherBackend string) {
 	}
 }
 
-func runPublisher(isProtobuf bool, publisherBackend string) {
-	settings := settings(isProtobuf, publisherBackend)
+func runPublisher(isProtobuf bool, backendName string) {
+	settings := settings(isProtobuf, backendName, "")
 	validator := hedwig.NewMessageValidator(settings, encoder(isProtobuf))
-	backend := backend(settings, publisherBackend)
+	backend := backend(settings, backendName)
 	publisher := hedwig.NewPublisher(settings, backend, validator)
 	data := userCreatedData(isProtobuf)
 	message, err := hedwig.NewMessage(settings, "user-created", "1.0", map[string]string{"request_id": "123"}, data)
@@ -144,19 +149,35 @@ func runPublisher(isProtobuf bool, publisherBackend string) {
 	fmt.Printf("Published message with id %s successfully with publish id: %s\n", message.ID, messageID)
 }
 
+func requeueDLQ(isProtobuf bool, backendName string) {
+	settings := settings(isProtobuf, backendName, "")
+	backend := backend(settings, backendName)
+	consumer := hedwig.NewQueueConsumer(settings, backend, encoder(isProtobuf))
+	err := consumer.RequeueDLQ(context.Background(), hedwig.ListenRequest{})
+	if err != nil {
+		panic(fmt.Sprintf("Failed to requeue messages: %v", err))
+	}
+}
+
 func main() {
 	isProtobuf := false
 	if isProtobufStr, found := os.LookupEnv("HEDWIG_PROTOBUF"); found {
 		isProtobuf = strings.ToLower(isProtobufStr) == "true"
 	}
-	publisherBackend := "aws"
+	backendName := "aws"
 	if isGCPStr, found := os.LookupEnv("HEDWIG_GCP"); found && strings.ToLower(isGCPStr) == "true" {
-		publisherBackend = "gcp"
+		backendName = "gcp"
+	}
+	fakeCallbackErr := ""
+	if fakeConsumerErrStr, found := os.LookupEnv("FAKE_CALLBACK_ERROR"); found {
+		fakeCallbackErr = fakeConsumerErrStr
 	}
 	if os.Args[1] == "consumer" {
-		runConsumer(isProtobuf, publisherBackend)
+		runConsumer(isProtobuf, backendName, fakeCallbackErr)
 	} else if os.Args[1] == "publisher" {
-		runPublisher(isProtobuf, publisherBackend)
+		runPublisher(isProtobuf, backendName)
+	} else if os.Args[1] == "requeue-dlq" {
+		requeueDLQ(isProtobuf, backendName)
 	} else {
 		panic(fmt.Sprintf("unknown command: %s", os.Args[1]))
 	}
