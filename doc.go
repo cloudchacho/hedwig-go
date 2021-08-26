@@ -78,7 +78,7 @@ Callbacks are simple functions that accept a context and a hedwig.Message struct
 You can access the data map using message.data as well as custom headers using message.Metadata.Headers
 and other metadata fields as described in the struct definition.
 
-Publisher
+publisher
 
 Assuming the publisher has already been initialized, You can publish messages like so:
 

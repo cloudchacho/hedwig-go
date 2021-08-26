@@ -14,17 +14,21 @@ import (
 type IPublisher interface {
 	// Publish a message on Hedwig infrastructure
 	Publish(ctx context.Context, message *Message) (string, error)
+
+	// WithInstrumenter adds a instrumenter to this publisher
+	WithInstrumenter(instrumenter Instrumenter) IPublisher
 }
 
-// Publisher handles hedwig publishing for Automatic
-type Publisher struct {
-	settings  *Settings
-	backend   IBackend
-	validator IMessageValidator
+// publisher handles hedwig publishing
+type publisher struct {
+	settings     *Settings
+	backend      IBackend
+	validator    IMessageValidator
+	instrumenter Instrumenter
 }
 
 // Publish a message on Hedwig
-func (p *Publisher) Publish(ctx context.Context, message *Message) (string, error) {
+func (p *publisher) Publish(ctx context.Context, message *Message) (string, error) {
 	payload, attributes, err := p.validator.Serialize(message)
 	if err != nil {
 		return "", err
@@ -40,10 +44,21 @@ func (p *Publisher) Publish(ctx context.Context, message *Message) (string, erro
 		return "", errors.New("Message route is not defined for message")
 	}
 
+	if p.instrumenter != nil {
+		var finalize func()
+		ctx, attributes, finalize = p.instrumenter.OnPublish(ctx, message, attributes)
+		defer finalize()
+	}
+
 	return p.backend.Publish(ctx, message, payload, attributes, topic)
 }
 
-// NewPublisher creates a new Publisher
+func (p *publisher) WithInstrumenter(instrumenter Instrumenter) IPublisher {
+	p.instrumenter = instrumenter
+	return p
+}
+
+// NewPublisher creates a new publisher
 // messageRouting: Maps message type and major version to topic names
 //   <message type>, <message version> => topic name
 // An entry is required for every message type that the app wants to consumer or publish. It is
@@ -53,7 +68,7 @@ func NewPublisher(
 ) IPublisher {
 	settings.initDefaults()
 
-	return &Publisher{
+	return &publisher{
 		settings:  settings,
 		backend:   backend,
 		validator: validator,

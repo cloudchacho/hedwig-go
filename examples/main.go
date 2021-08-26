@@ -7,11 +7,16 @@ import (
 	"os"
 	"strings"
 
+	gcloudPropagator "github.com/GoogleCloudPlatform/opentelemetry-operations-go/propagator"
 	"github.com/cloudchacho/hedwig-go"
 	"github.com/cloudchacho/hedwig-go/aws"
 	"github.com/cloudchacho/hedwig-go/gcp"
 	"github.com/cloudchacho/hedwig-go/jsonschema"
+	hedwigOtel "github.com/cloudchacho/hedwig-go/otel"
 	"github.com/cloudchacho/hedwig-go/protobuf"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -77,7 +82,9 @@ func (h *handler) userCreated(ctx context.Context, message *hedwig.Message) erro
 	} else {
 		userID = message.Data.(*UserCreatedData).UserID
 	}
-	fmt.Printf("Receive user created message with id %s and user id %s, request id %s and provider metadata %v\n", message.ID, userID, message.Metadata.Headers["request_id"], message.Metadata.ProviderMetadata)
+	span := trace.SpanFromContext(ctx)
+	fmt.Printf("[%s/%s] Receive user created message with id %s and user id %s, request id %s and provider metadata %v\n",
+		span.SpanContext().TraceID(), span.SpanContext().SpanID(), message.ID, userID, message.Metadata.Headers["request_id"], message.Metadata.ProviderMetadata)
 	return nil
 }
 
@@ -122,10 +129,23 @@ func backend(settings *hedwig.Settings, backendName string) hedwig.IBackend {
 	}
 }
 
+func instrumenter(backendName string) hedwig.Instrumenter {
+	var propagator propagation.TextMapPropagator
+	if backendName == "gcp" {
+		propagator = gcloudPropagator.New()
+	} else {
+		propagator = propagation.TraceContext{}
+	}
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.AlwaysSample())),
+	)
+	return hedwigOtel.NewInstrumenter(tp, propagator)
+}
+
 func runConsumer(isProtobuf bool, backendName string, fakeCallbackErr string) {
 	settings := settings(isProtobuf, backendName, fakeCallbackErr)
 	backend := backend(settings, backendName)
-	consumer := hedwig.NewQueueConsumer(settings, backend, encoder(isProtobuf))
+	consumer := hedwig.NewQueueConsumer(settings, backend, encoder(isProtobuf)).WithInstrumenter(instrumenter(backendName))
 	err := consumer.ListenForMessages(context.Background(), hedwig.ListenRequest{})
 	if err != nil {
 		panic(fmt.Sprintf("Failed to consume messages: %v", err))
@@ -133,22 +153,29 @@ func runConsumer(isProtobuf bool, backendName string, fakeCallbackErr string) {
 }
 
 func runPublisher(isProtobuf bool, backendName string) {
+	ctx := context.Background()
+	tp := sdktrace.NewTracerProvider()
+	tracer := tp.Tracer("github.com/cloudchacho/hedwig-go/examples")
+	ctx, span := tracer.Start(ctx, "publisher")
+	defer span.End()
 	settings := settings(isProtobuf, backendName, "")
 	validator := hedwig.NewMessageValidator(settings, encoder(isProtobuf))
 	backend := backend(settings, backendName)
-	publisher := hedwig.NewPublisher(settings, backend, validator)
+	publisher := hedwig.NewPublisher(settings, backend, validator).WithInstrumenter(instrumenter(backendName))
 	data := userCreatedData(isProtobuf)
 	message, err := hedwig.NewMessage(settings, "user-created", "1.0", map[string]string{"request_id": "123"}, data)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create message: %v", err))
 	}
-	messageID, err := publisher.Publish(context.Background(), message)
+	messageID, err := publisher.Publish(ctx, message)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to publish message: %v", err))
 	}
-	fmt.Printf("Published message with id %s successfully with publish id: %s\n", message.ID, messageID)
+	fmt.Printf("[%s/%s], Published message with id %s successfully with publish id: %s\n",
+		span.SpanContext().TraceID(), span.SpanContext().SpanID(), message.ID, messageID)
 }
 
+// [949470637aaaed7a/a8a1790220ef2fd15a2fd3d2064a9dd3], Published message with id dd169e1a-cb73-44ed-a2c9-5c047bd12ca9 successfully with publish id: 2941644790253146
 func requeueDLQ(isProtobuf bool, backendName string) {
 	settings := settings(isProtobuf, backendName, "")
 	backend := backend(settings, backendName)

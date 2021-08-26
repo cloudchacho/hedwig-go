@@ -91,6 +91,24 @@ func (b *fakeBackend) RequeueDLQ(ctx context.Context, numMessages uint32, visibi
 	return args.Error(0)
 }
 
+type fakeInstrumenter struct {
+	mock.Mock
+}
+
+func (f *fakeInstrumenter) OnMessageDeserialized(ctx context.Context, message *Message) {
+	f.Called(ctx, message)
+}
+
+func (f *fakeInstrumenter) OnPublish(ctx context.Context, message *Message, attributes map[string]string) (context.Context, map[string]string, func()) {
+	args := f.Called(ctx, message, attributes)
+	return args.Get(0).(context.Context), args.Get(1).(map[string]string), args.Get(2).(func())
+}
+
+func (f *fakeInstrumenter) OnReceive(ctx context.Context, attributes map[string]string) (context.Context, func()) {
+	args := f.Called(ctx, attributes)
+	return args.Get(0).(context.Context), args.Get(1).(func())
+}
+
 func (s *ConsumerTestSuite) TestProcessMessage() {
 	ctx := context.Background()
 	payload := []byte(`foobar`)
@@ -254,6 +272,33 @@ func (s *ConsumerTestSuite) TestProcessMessageAckFailure() {
 	s.backend.AssertExpectations(s.T())
 	s.validator.AssertExpectations(s.T())
 	s.callback.AssertExpectations(s.T())
+}
+
+func (s *ConsumerTestSuite) TestProcessMessageFollowsParentTrace() {
+	ctx := context.Background()
+	instrumentedCtx := context.WithValue(ctx, "instrumented", true)
+	payload := []byte(`foobar`)
+	attributes := map[string]string{"request_id": "123", "traceparent": "00-aa2ada259e917551e16da4a0ad33db24-662fd261d30ec74c-01"}
+	providerMetadata := struct{}{}
+	instrumenter := &fakeInstrumenter{}
+	instrumentedConsumer := s.consumer.WithInstrumenter(instrumenter).(*queueConsumer)
+	message := Message{Type: "user-created", DataSchemaVersion: semver.MustParse("1.0")}
+	s.validator.On("Deserialize", payload, attributes, providerMetadata).
+		Return(&message, nil)
+	s.callback.On("Callback", instrumentedCtx, &message).
+		Return(nil)
+	s.backend.On("AckMessage", instrumentedCtx, providerMetadata).
+		Return(nil)
+	called := false
+	instrumenter.On("OnReceive", ctx, attributes).
+		Return(instrumentedCtx, func() { called = true })
+	instrumenter.On("OnMessageDeserialized", instrumentedCtx, &message)
+	instrumentedConsumer.processMessage(ctx, payload, attributes, providerMetadata)
+	s.backend.AssertExpectations(s.T())
+	s.validator.AssertExpectations(s.T())
+	s.callback.AssertExpectations(s.T())
+	instrumenter.AssertExpectations(s.T())
+	s.True(called)
 }
 
 func (s *ConsumerTestSuite) TestListenForMessages() {

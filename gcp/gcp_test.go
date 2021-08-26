@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudchacho/hedwig-go/internal/testutils"
-
 	"cloud.google.com/go/pubsub"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -22,6 +20,7 @@ import (
 
 	"github.com/cloudchacho/hedwig-go"
 	"github.com/cloudchacho/hedwig-go/gcp"
+	"github.com/cloudchacho/hedwig-go/internal/testutils"
 )
 
 type fakeHedwigDataField struct {
