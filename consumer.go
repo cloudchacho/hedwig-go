@@ -45,7 +45,7 @@ type queueConsumer struct {
 	consumer
 }
 
-func (c *queueConsumer) processMessage(ctx context.Context, payload []byte, attributes map[string]string, providerMetadata interface{}) {
+func (c *consumer) processMessage(ctx context.Context, payload []byte, attributes map[string]string, providerMetadata interface{}) {
 	if c.instrumenter != nil {
 		var finalize func()
 		ctx, finalize = c.instrumenter.OnReceive(ctx, attributes)

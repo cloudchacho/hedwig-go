@@ -80,9 +80,11 @@ func (s *PublisherTestSuite) TestPublishSerializeError() {
 	s.backend.AssertExpectations(s.T())
 }
 
+type contextKey string
+
 func (s *PublisherTestSuite) TestPublishSendsTraceID() {
 	ctx := context.Background()
-	instrumentedCtx := context.WithValue(ctx, "instrumented", true)
+	instrumentedCtx := context.WithValue(ctx, contextKey("instrumented"), true)
 
 	data := fakeHedwigDataField{
 		VehicleID: "C_1234567890123456",

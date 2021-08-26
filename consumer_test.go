@@ -276,7 +276,7 @@ func (s *ConsumerTestSuite) TestProcessMessageAckFailure() {
 
 func (s *ConsumerTestSuite) TestProcessMessageFollowsParentTrace() {
 	ctx := context.Background()
-	instrumentedCtx := context.WithValue(ctx, "instrumented", true)
+	instrumentedCtx := context.WithValue(ctx, contextKey("instrumented"), true)
 	payload := []byte(`foobar`)
 	attributes := map[string]string{"request_id": "123", "traceparent": "00-aa2ada259e917551e16da4a0ad33db24-662fd261d30ec74c-01"}
 	providerMetadata := struct{}{}

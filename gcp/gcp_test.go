@@ -139,10 +139,10 @@ func (s *BackendTestSuite) TestReceive() {
 		s.True(err.Error() == "draining" || err == context.DeadlineExceeded)
 	})
 
-	s.fakeConsumerCallback.AssertExpectations(s.T())
-
-	providerMetadata := s.fakeConsumerCallback.Mock.Calls[0].Arguments.Get(3).(gcp.Metadata)
-	s.Equal(1, providerMetadata.DeliveryAttempt)
+	if s.fakeConsumerCallback.AssertExpectations(s.T()) {
+		providerMetadata := s.fakeConsumerCallback.Mock.Calls[0].Arguments.Get(3).(gcp.Metadata)
+		s.Equal(1, providerMetadata.DeliveryAttempt)
+	}
 }
 
 func (s *BackendTestSuite) TestReceiveCrossProject() {
