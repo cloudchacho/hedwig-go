@@ -63,6 +63,6 @@ func (o *instrumenter) OnReceive(ctx context.Context, attributes map[string]stri
 	return ctx, func() { span.End() }
 }
 
-func NewInstrumenter(tracer trace.TracerProvider, propagator propagation.TextMapPropagator) hedwig.Instrumenter {
-	return &instrumenter{tp: tracer, prop: propagator}
+func NewInstrumenter(tracerProvider trace.TracerProvider, propagator propagation.TextMapPropagator) hedwig.Instrumenter {
+	return &instrumenter{tp: tracerProvider, prop: propagator}
 }
