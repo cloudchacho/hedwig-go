@@ -12,13 +12,14 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go: ['1.16', '1.17']
+        go: ['1.16', '1.17', '1.18.0-beta1']
     steps:
       - id: setup
         name: Setup Golang
         uses: actions/setup-go@v2
         with:
           go-version: ${{ matrix.go }}
+          stable: ${{ !contains(matrix.go, 'beta') }}
 
       - id: checkout
         name: Checkout PR
