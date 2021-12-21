@@ -235,7 +235,7 @@ func (g *backend) ensureClient(ctx context.Context) error {
 	if g.client != nil {
 		return nil
 	}
-	client, err := pubsub.NewClient(context.Background(), googleCloudProject)
+	client, err := pubsub.NewClient(context.Background(), googleCloudProject, g.settings.PubsubClientOptions...)
 	if err != nil {
 		return err
 	}
