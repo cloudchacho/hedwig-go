@@ -30,6 +30,10 @@ func (f *fakePublisher) Publish(ctx context.Context, message *Message) (string, 
 	return args.String(0), args.Error(1)
 }
 
+func (f *fakePublisher) WithInstrumenter(instrumenter Instrumenter) IPublisher {
+	return f
+}
+
 func createTestSettings() *Settings {
 	s := &Settings{
 		AWSRegion:     "us-east-1",

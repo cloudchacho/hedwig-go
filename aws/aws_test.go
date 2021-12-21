@@ -225,9 +225,7 @@ func (s *BackendTestSuite) TestReceive() {
 	}
 	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.timerCtx"), payload2, attributes2, providerMetadata).
 		Return().
-		Once().
-		// force method to return after just one loop
-		After(time.Millisecond * 11)
+		Once()
 
 	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*1)
 	defer cancel()
@@ -456,7 +454,7 @@ func (s *BackendTestSuite) TestReceiveMissingAttributes() {
 		Return().
 		Once()
 
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*1)
+	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*10)
 	defer cancel()
 	testutils.RunAndWait(func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)

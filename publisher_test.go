@@ -34,9 +34,9 @@ func (s *PublisherTestSuite) TestPublish() {
 	s.backend.On("Publish", ctx, message, payload, headers, "dev-user-created-v1").
 		Return(messageID, nil)
 
-	receivedmessageID, err := s.publisher.Publish(ctx, message)
+	receivedMessageID, err := s.publisher.Publish(ctx, message)
 	s.Nil(err)
-	s.Equal(messageID, receivedmessageID)
+	s.Equal(messageID, receivedMessageID)
 
 	s.backend.AssertExpectations(s.T())
 }
@@ -80,13 +80,54 @@ func (s *PublisherTestSuite) TestPublishSerializeError() {
 	s.backend.AssertExpectations(s.T())
 }
 
+type contextKey string
+
+func (s *PublisherTestSuite) TestPublishSendsTraceID() {
+	ctx := context.Background()
+	instrumentedCtx := context.WithValue(ctx, contextKey("instrumented"), true)
+
+	data := fakeHedwigDataField{
+		VehicleID: "C_1234567890123456",
+	}
+	message, err := NewMessage(s.settings, "user-created", "1.0", nil, &data)
+	s.Require().NoError(err)
+
+	payload := []byte(`{"type": "user-created"}`)
+	headers := map[string]string{}
+	instrumentedHeaders := map[string]string{"traceparent": "00-aa2ada259e917551e16da4a0ad33db24-662fd261d30ec74c-01"}
+
+	instrumenter := &fakeInstrumenter{}
+	instrumentedPublisher := s.publisher.WithInstrumenter(instrumenter)
+
+	called := false
+
+	instrumenter.On("OnPublish", ctx, message, headers).
+		Return(instrumentedCtx, instrumentedHeaders, func() { called = true })
+
+	s.validator.On("Serialize", message).
+		Return(payload, headers, nil)
+
+	messageID := "123"
+
+	s.backend.On("Publish", instrumentedCtx, message, payload, instrumentedHeaders, "dev-user-created-v1").
+		Return(messageID, nil)
+
+	receivedMessageID, err := instrumentedPublisher.Publish(ctx, message)
+	s.Nil(err)
+	s.Equal(messageID, receivedMessageID)
+
+	s.backend.AssertExpectations(s.T())
+	instrumenter.AssertExpectations(s.T())
+	s.True(called)
+}
+
 func (s *PublisherTestSuite) TestNew() {
 	assert.NotNil(s.T(), s.publisher)
 }
 
 type PublisherTestSuite struct {
 	suite.Suite
-	publisher *Publisher
+	publisher *publisher
 	backend   *fakeBackend
 	validator *fakeValidator
 	settings  *Settings
@@ -107,7 +148,7 @@ func (s *PublisherTestSuite) SetupTest() {
 	backend := &fakeBackend{}
 	validator := &fakeValidator{}
 
-	s.publisher = NewPublisher(settings, backend, validator).(*Publisher)
+	s.publisher = NewPublisher(settings, backend, validator).(*publisher)
 	s.backend = backend
 	s.validator = validator
 	s.settings = settings

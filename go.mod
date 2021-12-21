@@ -1,6 +1,6 @@
 module github.com/cloudchacho/hedwig-go
 
-go 1.14
+go 1.16
 
 require (
 	cloud.google.com/go/pubsub v1.11.0
@@ -12,6 +12,9 @@ require (
 	github.com/satori/go.uuid v1.2.0
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
+	go.opentelemetry.io/otel v0.20.0
+	go.opentelemetry.io/otel/sdk v0.20.0
+	go.opentelemetry.io/otel/trace v0.20.0
 	golang.org/x/oauth2 v0.0.0-20210514164344-f6687ab2804c
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	google.golang.org/api v0.48.0

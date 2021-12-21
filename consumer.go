@@ -29,19 +29,29 @@ type IQueueConsumer interface {
 	// This function runs until there are no more messages in the dead letter queue.
 	// It can be aborted by canceling the context
 	RequeueDLQ(ctx context.Context, request ListenRequest) error
+
+	// WithInstrumenter adds a instrumenter to this consumer
+	WithInstrumenter(instrumenter Instrumenter) IQueueConsumer
 }
 
 type consumer struct {
-	backend   IBackend
-	settings  *Settings
-	validator IMessageValidator
+	backend      IBackend
+	settings     *Settings
+	validator    IMessageValidator
+	instrumenter Instrumenter
 }
 
 type queueConsumer struct {
 	consumer
 }
 
-func (c *queueConsumer) processMessage(ctx context.Context, payload []byte, attributes map[string]string, providerMetadata interface{}) {
+func (c *consumer) processMessage(ctx context.Context, payload []byte, attributes map[string]string, providerMetadata interface{}) {
+	if c.instrumenter != nil {
+		var finalize func()
+		ctx, finalize = c.instrumenter.OnReceive(ctx, attributes)
+		defer finalize()
+	}
+
 	var acked bool
 	loggingFields := LoggingFields{"message_body": payload}
 
@@ -59,6 +69,10 @@ func (c *queueConsumer) processMessage(ctx context.Context, payload []byte, attr
 	if err != nil {
 		c.settings.GetLogger(ctx).Error(err, "invalid message, unable to unmarshal", loggingFields)
 		return
+	}
+
+	if c.instrumenter != nil {
+		c.instrumenter.OnMessageDeserialized(ctx, message)
 	}
 
 	loggingFields = LoggingFields{"message_id": message.ID, "type": message.Type, "version": message.DataSchemaVersion}
@@ -104,6 +118,11 @@ func (c *queueConsumer) RequeueDLQ(ctx context.Context, request ListenRequest) e
 	}
 
 	return c.backend.RequeueDLQ(ctx, request.NumMessages, request.VisibilityTimeout)
+}
+
+func (c *queueConsumer) WithInstrumenter(instrumenter Instrumenter) IQueueConsumer {
+	c.instrumenter = instrumenter
+	return c
 }
 
 func wrapCallback(function CallbackFunction) CallbackFunction {
