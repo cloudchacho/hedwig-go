@@ -2,6 +2,11 @@ module github.com/cloudchacho/hedwig-go
 
 go 1.16
 
+retract (
+    v1.0.4 // this version doesn't exist in this repo, but goproxy thinks it does?
+    v1.0.5 // Contains retractions only.
+)
+
 require (
 	cloud.google.com/go/pubsub v1.11.0
 	github.com/Masterminds/semver v1.5.0
