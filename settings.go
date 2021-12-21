@@ -7,6 +7,8 @@ package hedwig
 import (
 	"context"
 	"time"
+
+	"google.golang.org/api/option"
 )
 
 // GetLoggerFunc returns the logger object
@@ -70,6 +72,10 @@ type Settings struct {
 
 	// GoogleCloudProject ID that contains Pub/Sub resources.
 	GoogleCloudProject string
+
+	// PubsubClientOptions is a list of options to pass to pubsub.NewClient. This may be useful to customize GRPC
+	// behavior for example.
+	PubsubClientOptions []option.ClientOption
 }
 
 func (s *Settings) initDefaults() {
@@ -86,5 +92,8 @@ func (s *Settings) initDefaults() {
 	if s.UseTransportMessageAttributes == nil {
 		useTransportMessageAttributes := true
 		s.UseTransportMessageAttributes = &useTransportMessageAttributes
+	}
+	if s.PubsubClientOptions == nil {
+		s.PubsubClientOptions = []option.ClientOption{}
 	}
 }
