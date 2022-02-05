@@ -1312,7 +1312,7 @@ func (s *BackendTestSuite) TestNew() {
 
 type BackendTestSuite struct {
 	suite.Suite
-	backend              *backend
+	backend              *Backend
 	settings             *hedwig.Settings
 	fakeSQS              *fakeSQS
 	fakeSNS              *fakeSNS
@@ -1352,7 +1352,7 @@ func (s *BackendTestSuite) SetupTest() {
 	payload := []byte(`{"vehicle_id": "C_123"}`)
 	attributes := map[string]string{"foo": "bar"}
 
-	s.backend = NewBackend(settings, NewAWSSessionsCache()).(*backend)
+	s.backend = NewBackend(settings, NewAWSSessionsCache())
 	s.backend.sqs = fakeSQS
 	s.backend.sns = fakeSNS
 	s.settings = settings

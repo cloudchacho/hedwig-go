@@ -27,14 +27,17 @@ func init() {
 	messageNameRegex = regexp.MustCompile(`^(.*)V(\d+)$`)
 }
 
-// messageEncoder is an implementation of hedwig.IEncoder
-type messageEncoder struct {
+// EncoderDecoder is an implementation of hedwig.Encoder and hedwig.Decoder that uses Protobuf
+type EncoderDecoder struct {
 	protoMsgs map[hedwig.MessageTypeMajorVersion]protoreflect.Message
 	versions  map[hedwig.MessageTypeMajorVersion]*semver.Version
 }
 
-// NewMessageEncoderFromMessageTypes creates a new encoder from explicit message types mapping
-func NewMessageEncoderFromMessageTypes(protoMessages map[hedwig.MessageTypeMajorVersion]protoreflect.Message) (hedwig.IEncoder, error) {
+var _ = hedwig.Encoder(&EncoderDecoder{})
+var _ = hedwig.Decoder(&EncoderDecoder{})
+
+// NewMessageEncoderDecoderFromMessageTypes creates a new encoder from explicit message types mapping
+func NewMessageEncoderDecoderFromMessageTypes(protoMessages map[hedwig.MessageTypeMajorVersion]protoreflect.Message) (*EncoderDecoder, error) {
 	protoMessagesMap := map[hedwig.MessageTypeMajorVersion]protoreflect.Message{}
 	versions := map[hedwig.MessageTypeMajorVersion]*semver.Version{}
 	for messageTypeMajorVersion, msg := range protoMessages {
@@ -63,17 +66,17 @@ func NewMessageEncoderFromMessageTypes(protoMessages map[hedwig.MessageTypeMajor
 		protoMessagesMap[messageTypeMajorVersion] = msg
 		versions[messageTypeMajorVersion] = version
 	}
-	return &messageEncoder{protoMsgs: protoMessagesMap, versions: versions}, nil
+	return &EncoderDecoder{protoMsgs: protoMessagesMap, versions: versions}, nil
 }
 
-// NewMessageEncoder creates a new encoder from given list of proto-messages
+// NewMessageEncoderDecoder creates a new encoder from given list of proto-messages
 // Proto messages must declare [hedwig.message_options](https://github.com/cloudchacho/hedwig/blob/main/protobuf/options.proto) option.
 // See [example proto file](../examples/schema.proto) for reference.
 //
 // This method will try to read message type from message_options, and if not specified,
 // assume that the messages are named as: `<MessageType>V<MajorVersion>`. If that doesn't work
-// for your use case, use NewMessageEncoderFromMessageTypes and provide an explicit mapping.
-func NewMessageEncoder(protoMessages []proto.Message) (hedwig.IEncoder, error) {
+// for your use case, use NewMessageEncoderDecoderFromMessageTypes and provide an explicit mapping.
+func NewMessageEncoderDecoder(protoMessages []proto.Message) (*EncoderDecoder, error) {
 	protoMessagesMap := map[hedwig.MessageTypeMajorVersion]protoreflect.Message{}
 	versions := map[hedwig.MessageTypeMajorVersion]*semver.Version{}
 	for _, msg := range protoMessages {
@@ -120,12 +123,12 @@ func NewMessageEncoder(protoMessages []proto.Message) (hedwig.IEncoder, error) {
 		protoMessagesMap[schemaKey] = msg.ProtoReflect()
 		versions[schemaKey] = version
 	}
-	return &messageEncoder{protoMsgs: protoMessagesMap, versions: versions}, nil
+	return &EncoderDecoder{protoMsgs: protoMessagesMap, versions: versions}, nil
 }
 
 // EncodeData encodes the message with appropriate format for transport over the wire
 // Type of data must be proto.Message
-func (me *messageEncoder) EncodeData(data interface{}, useMessageTransport bool, metaAttrs hedwig.MetaAttributes) ([]byte, error) {
+func (ed *EncoderDecoder) EncodeData(data interface{}, useMessageTransport bool, metaAttrs hedwig.MetaAttributes) ([]byte, error) {
 	var payload []byte
 	var ok bool
 	var dataTyped proto.Message
@@ -167,10 +170,10 @@ func (me *messageEncoder) EncodeData(data interface{}, useMessageTransport bool,
 }
 
 // VerifyKnownMinorVersion checks that message version is known to us
-func (me *messageEncoder) VerifyKnownMinorVersion(messageType string, version *semver.Version) error {
+func (ed *EncoderDecoder) VerifyKnownMinorVersion(messageType string, version *semver.Version) error {
 	protoMessageKey := hedwig.MessageTypeMajorVersion{messageType, uint(version.Major())}
 
-	if schemaVersion, ok := me.versions[protoMessageKey]; ok {
+	if schemaVersion, ok := ed.versions[protoMessageKey]; ok {
 		if schemaVersion.LessThan(version) {
 			return errors.Errorf("Unknown minor version: {%d}, last known minor version: %d",
 				version.Minor(), schemaVersion.Minor())
@@ -181,12 +184,12 @@ func (me *messageEncoder) VerifyKnownMinorVersion(messageType string, version *s
 }
 
 // EncodeMessageType encodes the message type with appropriate format for transport over the wire
-func (me *messageEncoder) EncodeMessageType(messageType string, version *semver.Version) string {
+func (ed *EncoderDecoder) EncodeMessageType(messageType string, version *semver.Version) string {
 	return fmt.Sprintf("%s/%d.%d", messageType, version.Major(), version.Minor())
 }
 
 // DecodeMessageType decodes message type from meta attributes
-func (me *messageEncoder) DecodeMessageType(schema string) (string, *semver.Version, error) {
+func (ed *EncoderDecoder) DecodeMessageType(schema string) (string, *semver.Version, error) {
 	m := schemaRegex.FindStringSubmatch(schema)
 	if len(m) == 0 {
 		return "", nil, errors.Errorf("invalid schema: '%s' doesn't match valid regex", schema)
@@ -203,7 +206,7 @@ func (me *messageEncoder) DecodeMessageType(schema string) (string, *semver.Vers
 
 // ExtractData extracts data from the on-the-wire payload
 // Type of data will be *anypb.Any
-func (me *messageEncoder) ExtractData(messagePayload []byte, attributes map[string]string) (hedwig.MetaAttributes, interface{}, error) {
+func (ed *EncoderDecoder) ExtractData(messagePayload []byte, attributes map[string]string) (hedwig.MetaAttributes, interface{}, error) {
 	metaAttrs := hedwig.MetaAttributes{}
 	payload := PayloadV1{}
 	err := proto.Unmarshal(messagePayload, &payload)
@@ -227,10 +230,10 @@ func (me *messageEncoder) ExtractData(messagePayload []byte, attributes map[stri
 
 // DecodeData validates and decodes data
 // Type of data must be *anypb.Any for containerized format or []byte for non-containerized format
-func (me *messageEncoder) DecodeData(messageType string, version *semver.Version, data interface{}) (interface{}, error) {
+func (ed *EncoderDecoder) DecodeData(messageType string, version *semver.Version, data interface{}) (interface{}, error) {
 	var ok bool
 	schemaKey := hedwig.MessageTypeMajorVersion{messageType, uint(version.Major())}
-	msgClass, ok := me.protoMsgs[schemaKey]
+	msgClass, ok := ed.protoMsgs[schemaKey]
 	if !ok {
 		return nil, errors.Errorf("Proto message not found for: %s %d.%d", messageType, version.Major(), version.Minor())
 	}

@@ -100,12 +100,12 @@ func userCreatedData(isProtobuf bool) interface{} {
 	}
 }
 
-func encoder(isProtobuf bool) hedwig.IEncoder {
-	var encoder hedwig.IEncoder
+func encoder(isProtobuf bool) hedwig.Encoder {
+	var encoder hedwig.Encoder
 	var err error
 	factoryRegistry := registry(isProtobuf)
 	if isProtobuf {
-		encoder, err = protobuf.NewMessageEncoder(
+		encoder, err = protobuf.NewMessageEncoderDecoder(
 			[]proto.Message{&UserCreatedV1{}},
 		)
 	} else {
@@ -118,7 +118,7 @@ func encoder(isProtobuf bool) hedwig.IEncoder {
 
 }
 
-func backend(settings *hedwig.Settings, backendName string) hedwig.IBackend {
+func backend(settings *hedwig.Settings, backendName string) hedwig.Backend {
 	if backendName == "aws" {
 		awsSessionCache := aws.NewAWSSessionsCache()
 		return aws.NewBackend(settings, awsSessionCache)
@@ -159,7 +159,7 @@ func runPublisher(isProtobuf bool, backendName string) {
 	ctx, span := tracer.Start(ctx, "publisher")
 	defer span.End()
 	settings := settings(isProtobuf, backendName, "")
-	validator := hedwig.NewMessageValidator(settings, encoder(isProtobuf))
+	validator := hedwig.newMessageValidator(settings, encoder(isProtobuf))
 	backend := backend(settings, backendName)
 	publisher := hedwig.NewPublisher(settings, backend, validator).WithInstrumenter(instrumenter(backendName))
 	data := userCreatedData(isProtobuf)

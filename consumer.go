@@ -1,7 +1,3 @@
-/*
- * Author: Michael Ngo
- */
-
 package hedwig
 
 import (
@@ -17,35 +13,18 @@ type ListenRequest struct {
 	VisibilityTimeout time.Duration // defaults to queue configuration
 }
 
-// IQueueConsumer represents a hedwig queue consumer
-type IQueueConsumer interface {
-	// ListenForMessages starts a hedwig listener for the provided message types
-	//
-	// This function never returns by default. It can be shut down by canceling the context.
-	ListenForMessages(ctx context.Context, request ListenRequest) error
-
-	// RequeueDLQ re-queues everything in the Hedwig DLQ back into the Hedwig queue
-	//
-	// This function runs until there are no more messages in the dead letter queue.
-	// It can be aborted by canceling the context
-	RequeueDLQ(ctx context.Context, request ListenRequest) error
-
-	// WithInstrumenter adds a instrumenter to this consumer
-	WithInstrumenter(instrumenter Instrumenter) IQueueConsumer
-}
-
-type consumer struct {
-	backend      IBackend
+type Consumer struct {
+	backend      ConsumerBackend
 	settings     *Settings
-	validator    IMessageValidator
+	deserializer deserializer
 	instrumenter Instrumenter
 }
 
-type queueConsumer struct {
-	consumer
+type QueueConsumer struct {
+	Consumer
 }
 
-func (c *consumer) processMessage(ctx context.Context, payload []byte, attributes map[string]string, providerMetadata interface{}) {
+func (c *Consumer) processMessage(ctx context.Context, payload []byte, attributes map[string]string, providerMetadata interface{}) {
 	if c.instrumenter != nil {
 		var finalize func()
 		ctx, finalize = c.instrumenter.OnReceive(ctx, attributes)
@@ -65,7 +44,7 @@ func (c *consumer) processMessage(ctx context.Context, payload []byte, attribute
 		}
 	}()
 
-	message, err := c.validator.Deserialize(payload, attributes, providerMetadata)
+	message, err := c.deserializer.deserialize(payload, attributes, providerMetadata)
 	if err != nil {
 		c.settings.GetLogger(ctx).Error(err, "invalid message, unable to unmarshal", loggingFields)
 		return
@@ -103,7 +82,7 @@ func (c *consumer) processMessage(ctx context.Context, payload []byte, attribute
 }
 
 // ListenForMessages starts a hedwig listener for the provided message types
-func (c *queueConsumer) ListenForMessages(ctx context.Context, request ListenRequest) error {
+func (c *QueueConsumer) ListenForMessages(ctx context.Context, request ListenRequest) error {
 	if request.NumMessages == 0 {
 		request.NumMessages = 1
 	}
@@ -112,7 +91,7 @@ func (c *queueConsumer) ListenForMessages(ctx context.Context, request ListenReq
 }
 
 // RequeueDLQ re-queues everything in the Hedwig DLQ back into the Hedwig queue
-func (c *queueConsumer) RequeueDLQ(ctx context.Context, request ListenRequest) error {
+func (c *QueueConsumer) RequeueDLQ(ctx context.Context, request ListenRequest) error {
 	if request.NumMessages == 0 {
 		request.NumMessages = 1
 	}
@@ -120,7 +99,7 @@ func (c *queueConsumer) RequeueDLQ(ctx context.Context, request ListenRequest) e
 	return c.backend.RequeueDLQ(ctx, request.NumMessages, request.VisibilityTimeout)
 }
 
-func (c *queueConsumer) WithInstrumenter(instrumenter Instrumenter) IQueueConsumer {
+func (c *QueueConsumer) WithInstrumenter(instrumenter Instrumenter) *QueueConsumer {
 	c.instrumenter = instrumenter
 	return c
 }
@@ -141,18 +120,21 @@ func wrapCallback(function CallbackFunction) CallbackFunction {
 	}
 }
 
-func NewQueueConsumer(settings *Settings, backend IBackend, encoder IEncoder) IQueueConsumer {
+type deserializer interface {
+	deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}) (*Message, error)
+}
+
+func NewQueueConsumer(settings *Settings, backend ConsumerBackend, decoder Decoder) *QueueConsumer {
 	settings.initDefaults()
 
 	for key, callback := range settings.CallbackRegistry {
 		settings.CallbackRegistry[key] = wrapCallback(callback)
 	}
 
-	return &queueConsumer{
-		consumer: consumer{
-			backend:   backend,
-			settings:  settings,
-			validator: NewMessageValidator(settings, encoder),
+	return &QueueConsumer{
+		Consumer: Consumer{
+			backend:      backend,
+			deserializer: newMessageValidator(settings, nil, decoder),
 		},
 	}
 }

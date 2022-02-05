@@ -1,7 +1,3 @@
-/*
- * Author: Michael Ngo
- */
-
 package hedwig
 
 import (
@@ -10,9 +6,6 @@ import (
 
 	"google.golang.org/api/option"
 )
-
-// GetLoggerFunc returns the logger object
-type GetLoggerFunc func(ctx context.Context) ILogger
 
 // Settings for Hedwig
 type Settings struct {
@@ -27,7 +20,7 @@ type Settings struct {
 	// AWS session tokenthat represents temporary credentials (i.e. for Lambda app)
 	AWSSessionToken string
 
-	// AWS read timeout for publisher
+	// AWS read timeout for Publisher
 	AWSReadTimeoutS time.Duration // optional; default: 2 seconds
 
 	// CallbackRegistry contains callbacks by message type and message version
@@ -43,7 +36,7 @@ type Settings struct {
 
 	// Maps message type and major version to topic names
 	//   <message type>, <message version> => topic name
-	// An entry is required for every message type that the app wants to consumer or publish. It is
+	// An entry is required for every message type that the app wants to Consumer or publish. It is
 	// recommended that major versions of a message be published on separate topics.
 	MessageRouting MessageRouting
 

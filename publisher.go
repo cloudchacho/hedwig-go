@@ -1,7 +1,3 @@
-/*
- * Author: Michael Ngo
- */
-
 package hedwig
 
 import (
@@ -10,26 +6,17 @@ import (
 	"github.com/pkg/errors"
 )
 
-// IPublisher handles all publish related functions
-type IPublisher interface {
-	// Publish a message on Hedwig infrastructure
-	Publish(ctx context.Context, message *Message) (string, error)
-
-	// WithInstrumenter adds a instrumenter to this publisher
-	WithInstrumenter(instrumenter Instrumenter) IPublisher
-}
-
-// publisher handles hedwig publishing
-type publisher struct {
+// Publisher handles hedwig publishing
+type Publisher struct {
 	settings     *Settings
-	backend      IBackend
-	validator    IMessageValidator
+	backend      PublisherBackend
+	serializer   serializer
 	instrumenter Instrumenter
 }
 
 // Publish a message on Hedwig
-func (p *publisher) Publish(ctx context.Context, message *Message) (string, error) {
-	payload, attributes, err := p.validator.Serialize(message)
+func (p *Publisher) Publish(ctx context.Context, message *Message) (string, error) {
+	payload, attributes, err := p.serializer.serialize(message)
 	if err != nil {
 		return "", err
 	}
@@ -53,24 +40,25 @@ func (p *publisher) Publish(ctx context.Context, message *Message) (string, erro
 	return p.backend.Publish(ctx, message, payload, attributes, topic)
 }
 
-func (p *publisher) WithInstrumenter(instrumenter Instrumenter) IPublisher {
+func (p *Publisher) WithInstrumenter(instrumenter Instrumenter) {
 	p.instrumenter = instrumenter
-	return p
 }
 
-// NewPublisher creates a new publisher
+type serializer interface {
+	serialize(message *Message) ([]byte, map[string]string, error)
+}
+
+// NewPublisher creates a new Publisher
 // messageRouting: Maps message type and major version to topic names
 //   <message type>, <message version> => topic name
-// An entry is required for every message type that the app wants to consumer or publish. It is
+// An entry is required for every message type that the app wants to Consumer or publish. It is
 // recommended that major versions of a message be published on separate topics.
-func NewPublisher(
-	settings *Settings, backend IBackend, validator IMessageValidator,
-) IPublisher {
+func NewPublisher(settings *Settings, backend PublisherBackend, encoder Encoder, decoder Decoder) *Publisher {
 	settings.initDefaults()
 
-	return &publisher{
-		settings:  settings,
-		backend:   backend,
-		validator: validator,
+	return &Publisher{
+		settings:   settings,
+		backend:    backend,
+		serializer: newMessageValidator(settings, encoder, decoder),
 	}
 }

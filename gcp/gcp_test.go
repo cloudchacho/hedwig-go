@@ -395,7 +395,7 @@ func (s *BackendTestSuite) TestNew() {
 
 type BackendTestSuite struct {
 	suite.Suite
-	backend              hedwig.IBackend
+	backend              *gcp.Backend
 	client               *pubsub.Client
 	settings             *hedwig.Settings
 	message              *hedwig.Message

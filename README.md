@@ -76,10 +76,6 @@ Create a JSON-schema and save as ``schema.json``:
 Next, set up a few configuration settings:
 
 ```go
-    validator, err := hedwig.NewMessageValidator("schema.json")
-    if err != nil {
-        panic("Failed to create validator")
-    }
     settings := &hedwig.Settings{
         AWSAccessKey:              <YOUR AWS KEY>,
         AWSAccountID:              <YOUR AWS ACCOUNT ID>,
@@ -95,7 +91,6 @@ Next, set up a few configuration settings:
     		        MessageMajorVersion: 1,
     	      }: "send_email",
         },
-        Validator:                 validator,
     }
 ```
 

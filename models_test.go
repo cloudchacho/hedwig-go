@@ -1,15 +1,8 @@
-/*
- * Author: Michael Ngo
- */
-
 package hedwig
 
 import (
-	"context"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/mock"
 
 	"github.com/Masterminds/semver"
 	"github.com/stretchr/testify/assert"
@@ -19,19 +12,6 @@ import (
 // fakeHedwigDataField is a fake data field for testing
 type fakeHedwigDataField struct {
 	VehicleID string `json:"vehicle_id"`
-}
-
-type fakePublisher struct {
-	mock.Mock
-}
-
-func (f *fakePublisher) Publish(ctx context.Context, message *Message) (string, error) {
-	args := f.Called(ctx, message)
-	return args.String(0), args.Error(1)
-}
-
-func (f *fakePublisher) WithInstrumenter(instrumenter Instrumenter) IPublisher {
-	return f
 }
 
 func createTestSettings() *Settings {
@@ -132,52 +112,6 @@ func TestNewMessageWithIDNilData(t *testing.T) {
 
 	_, err := newMessageWithID(settings, id, msgDataType, msgDataSchemaVersion, metadata, nil)
 	assertions.NotNil(err)
-}
-
-func TestMessageSerialize(t *testing.T) {
-	settings := createTestSettings()
-	msgDataType := "vehicle_created"
-	msgDataSchemaVersion := "1.0"
-	data := fakeHedwigDataField{}
-	m, err := NewMessage(settings, msgDataType, msgDataSchemaVersion, nil, &data)
-	require.NoError(t, err)
-
-	validator := &fakeValidator{}
-	payload := []byte(`{"type": "user-created"}`)
-	headers := map[string]string{}
-
-	validator.On("Serialize", m).
-		Return(payload, headers, nil)
-
-	returnedPayload, returnedHeaders, err := m.Serialize(validator)
-	assert.NoError(t, err)
-	assert.Equal(t, payload, returnedPayload)
-	assert.Equal(t, headers, returnedHeaders)
-
-	validator.AssertExpectations(t)
-}
-
-func TestMessagePublish(t *testing.T) {
-	ctx := context.Background()
-
-	settings := createTestSettings()
-	msgDataType := "vehicle_created"
-	msgDataSchemaVersion := "1.0"
-	data := fakeHedwigDataField{}
-	m, err := NewMessage(settings, msgDataType, msgDataSchemaVersion, nil, &data)
-	require.NoError(t, err)
-
-	publisher := &fakePublisher{}
-	messageID := "123"
-
-	publisher.On("Publish", ctx, m).
-		Return(messageID, nil)
-
-	returnedmessageID, err := m.Publish(ctx, publisher)
-	assert.NoError(t, err)
-	assert.Equal(t, messageID, returnedmessageID)
-
-	publisher.AssertExpectations(t)
 }
 
 func TestNewMessage(t *testing.T) {

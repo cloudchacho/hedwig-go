@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/Masterminds/semver"
 	"github.com/pkg/errors"
 )
 
@@ -44,7 +45,8 @@ type SubscriptionProject struct {
 
 type ConsumerCallback func(ctx context.Context, payload []byte, attributes map[string]string, providerMetadata interface{})
 
-type IBackend interface {
+// ConsumerBackend is used for consuming messages from a transport
+type ConsumerBackend interface {
 	// Receive messages from configured queue(s) and provide it through the callback. This should run indefinitely
 	// until the context is canceled. Provider metadata should include all info necessary to ack/nack a message.
 	Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback ConsumerCallback) error
@@ -57,9 +59,39 @@ type IBackend interface {
 
 	//HandleLambdaEvent(ctx context.Context, settings *Settings, snsEvent events.SNSEvent) error
 
-	// Publish a message represented by the payload, with specified attributes to the specific topic
-	Publish(ctx context.Context, message *Message, payload []byte, attributes map[string]string, topic string) (string, error)
-
 	// RequeueDLQ re-queues everything in the Hedwig DLQ back into the Hedwig queue
 	RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration) error
 }
+
+// PublisherBackend is used to publish messages to a transport
+type PublisherBackend interface {
+	// Publish a message represented by the payload, with specified attributes to the specific topic
+	Publish(ctx context.Context, message *Message, payload []byte, attributes map[string]string, topic string) (string, error)
+}
+
+// Encoder is responsible for encoding the message payload in appropriate format for over the wire transport
+type Encoder interface {
+	// EncodeData encodes the message with appropriate format for transport over the wire
+	EncodeData(data interface{}, useMessageTransport bool, metaAttrs MetaAttributes) ([]byte, error)
+
+	// EncodeMessageType encodes the message type with appropriate format for transport over the wire
+	EncodeMessageType(messageType string, version *semver.Version) string
+
+	// VerifyKnownMinorVersion checks that message version is known to us
+	VerifyKnownMinorVersion(messageType string, version *semver.Version) error
+}
+
+// Decoder is responsible for decoding the message payload in appropriate format from over the wire transport format
+type Decoder interface {
+	// DecodeData validates and decodes data
+	DecodeData(messageType string, version *semver.Version, data interface{}) (interface{}, error)
+
+	// ExtractData extracts data from the on-the-wire payload when not using message transport
+	ExtractData(messagePayload []byte, attributes map[string]string) (MetaAttributes, interface{}, error)
+
+	// DecodeMessageType decodes message type from meta attributes
+	DecodeMessageType(schema string) (string, *semver.Version, error)
+}
+
+// GetLoggerFunc returns the logger object
+type GetLoggerFunc func(ctx context.Context) ILogger

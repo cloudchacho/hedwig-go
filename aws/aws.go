@@ -21,12 +21,15 @@ import (
 	"github.com/cloudchacho/hedwig-go"
 )
 
-type backend struct {
+type Backend struct {
 	settings *hedwig.Settings
 
 	sqs sqsiface.SQSAPI
 	sns snsiface.SNSAPI
 }
+
+var _ = hedwig.ConsumerBackend(&Backend{})
+var _ = hedwig.PublisherBackend(&Backend{})
 
 // Metadata is additional metadata associated with a message
 type Metadata struct {
@@ -48,19 +51,19 @@ type Metadata struct {
 
 const sqsWaitTimeoutSeconds int64 = 20
 
-func (a *backend) getSQSQueueName() string {
+func (a *Backend) getSQSQueueName() string {
 	return fmt.Sprintf("HEDWIG-%s", a.settings.QueueName)
 }
 
-func (a *backend) getSQSDLQName() string {
+func (a *Backend) getSQSDLQName() string {
 	return fmt.Sprintf("HEDWIG-%s-DLQ", a.settings.QueueName)
 }
 
-func (a *backend) getSNSTopic(messageTopic string) string {
+func (a *Backend) getSNSTopic(messageTopic string) string {
 	return fmt.Sprintf("arn:aws:sns:%s:%s:hedwig-%s", a.settings.AWSRegion, a.settings.AWSAccountID, messageTopic)
 }
 
-func (a *backend) getSQSQueueURL(ctx context.Context) (*string, error) {
+func (a *Backend) getSQSQueueURL(ctx context.Context) (*string, error) {
 	out, err := a.sqs.GetQueueUrlWithContext(ctx, &sqs.GetQueueUrlInput{
 		QueueName: aws.String(a.getSQSQueueName()),
 	})
@@ -70,7 +73,7 @@ func (a *backend) getSQSQueueURL(ctx context.Context) (*string, error) {
 	return out.QueueUrl, nil
 }
 
-func (a *backend) getSQSDLQURL(ctx context.Context) (*string, error) {
+func (a *Backend) getSQSDLQURL(ctx context.Context) (*string, error) {
 	out, err := a.sqs.GetQueueUrlWithContext(ctx, &sqs.GetQueueUrlInput{
 		QueueName: aws.String(a.getSQSDLQName()),
 	})
@@ -82,7 +85,7 @@ func (a *backend) getSQSDLQURL(ctx context.Context) (*string, error) {
 
 // isValidForSQS checks that the payload is allowed in SQS message body since only some UTF8 characters are allowed
 // ref: https://docs.amazonaws.cn/en_us/AWSSimpleQueueService/latest/APIReference/API_SendMessage.html
-func (a *backend) isValidForSQS(payload []byte) bool {
+func (a *Backend) isValidForSQS(payload []byte) bool {
 	if !utf8.Valid(payload) {
 		return false
 	}
@@ -93,7 +96,7 @@ func (a *backend) isValidForSQS(payload []byte) bool {
 }
 
 // Publish a message represented by the payload, with specified attributes to the specific topic
-func (a *backend) Publish(ctx context.Context, message *hedwig.Message, payload []byte, attributes map[string]string, topic string) (string, error) {
+func (a *Backend) Publish(ctx context.Context, message *hedwig.Message, payload []byte, attributes map[string]string, topic string) (string, error) {
 	snsTopic := a.getSNSTopic(topic)
 	var payloadStr string
 
@@ -130,7 +133,7 @@ func (a *backend) Publish(ctx context.Context, message *hedwig.Message, payload 
 
 // Receive messages from configured queue(s) and provide it through the callback. This should run indefinitely
 // until the context is canceled. Provider metadata should include all info necessary to ack/nack a message.
-func (a *backend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback hedwig.ConsumerCallback) error {
+func (a *Backend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback hedwig.ConsumerCallback) error {
 	queueURL, err := a.getSQSQueueURL(ctx)
 	if err != nil {
 		return errors.Wrap(err, "failed to get SQS Queue URL")
@@ -210,7 +213,7 @@ func (a *backend) Receive(ctx context.Context, numMessages uint32, visibilityTim
 }
 
 // RequeueDLQ re-queues everything in the Hedwig DLQ back into the Hedwig queue
-func (a *backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration) error {
+func (a *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration) error {
 	queueURL, err := a.getSQSQueueURL(ctx)
 	if err != nil {
 		return errors.Wrap(err, "failed to get SQS Queue URL")
@@ -284,13 +287,13 @@ func (a *backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 }
 
 // NackMessage nacks a message on the queue
-func (a *backend) NackMessage(ctx context.Context, providerMetadata interface{}) error {
+func (a *Backend) NackMessage(ctx context.Context, providerMetadata interface{}) error {
 	// not supported by AWS
 	return nil
 }
 
 // AckMessage acknowledges a message on the queue
-func (a *backend) AckMessage(ctx context.Context, providerMetadata interface{}) error {
+func (a *Backend) AckMessage(ctx context.Context, providerMetadata interface{}) error {
 	receipt := providerMetadata.(Metadata).ReceiptHandle
 	queueURL, err := a.getSQSQueueURL(ctx)
 	if err != nil {
@@ -303,13 +306,13 @@ func (a *backend) AckMessage(ctx context.Context, providerMetadata interface{}) 
 	return err
 }
 
-// NewBackend creates a backend for publishing and consuming from AWS
-// The provider metadata produced by this backend will have concrete type: aws.Metadata
-func NewBackend(settings *hedwig.Settings, sessionCache *SessionsCache) hedwig.IBackend {
+// NewBackend creates a Backend for publishing and consuming from AWS
+// The provider metadata produced by this Backend will have concrete type: aws.Metadata
+func NewBackend(settings *hedwig.Settings, sessionCache *SessionsCache) *Backend {
 
 	awsSession := sessionCache.GetSession(settings)
 
-	return &backend{
+	return &Backend{
 		settings,
 		sqs.New(awsSession),
 		sns.New(awsSession),

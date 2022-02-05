@@ -1,11 +1,6 @@
-/*
- * Author: Michael Ngo
- */
-
 package hedwig
 
 import (
-	"context"
 	"time"
 
 	"github.com/Masterminds/semver"
@@ -35,16 +30,6 @@ type Message struct {
 	DataSchemaVersion *semver.Version
 	ID                string
 	Metadata          metadata
-}
-
-// Publish the message
-func (m *Message) Publish(ctx context.Context, publisher IPublisher) (string, error) {
-	return publisher.Publish(ctx, m)
-}
-
-// Serialize the message for appropriate on-the-wire format
-func (m *Message) Serialize(validator IMessageValidator) ([]byte, map[string]string, error) {
-	return validator.Serialize(m)
 }
 
 func createMetadata(settings *Settings, headers map[string]string) metadata {

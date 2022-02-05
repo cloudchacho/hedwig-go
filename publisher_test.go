@@ -1,7 +1,3 @@
-/*
- * Author: Michael Ngo
- */
-
 package hedwig
 
 import (
@@ -9,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/pkg/errors"
+	"github.com/stretchr/testify/mock"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -26,7 +23,7 @@ func (s *PublisherTestSuite) TestPublish() {
 	payload := []byte(`{"type": "user-created"}`)
 	headers := map[string]string{}
 
-	s.validator.On("Serialize", message).
+	s.serializer.On("serialize", message).
 		Return(payload, headers, nil)
 
 	messageID := "123"
@@ -53,7 +50,7 @@ func (s *PublisherTestSuite) TestPublishTopicError() {
 	payload := []byte(`{"type": "user-created"}`)
 	headers := map[string]string{}
 
-	s.validator.On("Serialize", message).
+	s.serializer.On("serialize", message).
 		Return(payload, headers, nil)
 
 	_, err = s.publisher.Publish(ctx, message)
@@ -71,7 +68,7 @@ func (s *PublisherTestSuite) TestPublishSerializeError() {
 	message, err := NewMessage(s.settings, "user-created", "2.0", nil, &data)
 	s.Require().NoError(err)
 
-	s.validator.On("Serialize", message).
+	s.serializer.On("serialize", message).
 		Return([]byte(""), map[string]string{}, errors.New("failed to serialize"))
 
 	_, err = s.publisher.Publish(ctx, message)
@@ -97,14 +94,14 @@ func (s *PublisherTestSuite) TestPublishSendsTraceID() {
 	instrumentedHeaders := map[string]string{"traceparent": "00-aa2ada259e917551e16da4a0ad33db24-662fd261d30ec74c-01"}
 
 	instrumenter := &fakeInstrumenter{}
-	instrumentedPublisher := s.publisher.WithInstrumenter(instrumenter)
+	s.publisher.WithInstrumenter(instrumenter)
 
 	called := false
 
 	instrumenter.On("OnPublish", ctx, message, headers).
 		Return(instrumentedCtx, instrumentedHeaders, func() { called = true })
 
-	s.validator.On("Serialize", message).
+	s.serializer.On("serialize", message).
 		Return(payload, headers, nil)
 
 	messageID := "123"
@@ -112,7 +109,7 @@ func (s *PublisherTestSuite) TestPublishSendsTraceID() {
 	s.backend.On("Publish", instrumentedCtx, message, payload, instrumentedHeaders, "dev-user-created-v1").
 		Return(messageID, nil)
 
-	receivedMessageID, err := instrumentedPublisher.Publish(ctx, message)
+	receivedMessageID, err := s.publisher.Publish(ctx, message)
 	s.Nil(err)
 	s.Equal(messageID, receivedMessageID)
 
@@ -127,10 +124,19 @@ func (s *PublisherTestSuite) TestNew() {
 
 type PublisherTestSuite struct {
 	suite.Suite
-	publisher *publisher
-	backend   *fakeBackend
-	validator *fakeValidator
-	settings  *Settings
+	publisher  *Publisher
+	backend    *fakeBackend
+	settings   *Settings
+	serializer *fakeSerializer
+}
+
+type fakeSerializer struct {
+	mock.Mock
+}
+
+func (f *fakeSerializer) serialize(message *Message) ([]byte, map[string]string, error) {
+	args := f.Called(message)
+	return args.Get(0).([]byte), args.Get(1).(map[string]string), args.Error(2)
 }
 
 func (s *PublisherTestSuite) SetupTest() {
@@ -146,11 +152,12 @@ func (s *PublisherTestSuite) SetupTest() {
 		},
 	}
 	backend := &fakeBackend{}
-	validator := &fakeValidator{}
+	serializer := &fakeSerializer{}
 
-	s.publisher = NewPublisher(settings, backend, validator).(*publisher)
+	s.publisher = NewPublisher(settings, backend, nil, nil)
+	s.publisher.serializer = serializer
 	s.backend = backend
-	s.validator = validator
+	s.serializer = serializer
 	s.settings = settings
 }
 

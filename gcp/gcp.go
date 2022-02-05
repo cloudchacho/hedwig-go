@@ -15,10 +15,13 @@ import (
 	"github.com/cloudchacho/hedwig-go"
 )
 
-type backend struct {
+type Backend struct {
 	settings *hedwig.Settings
 	client   *pubsub.Client
 }
+
+var _ = hedwig.ConsumerBackend(&Backend{})
+var _ = hedwig.PublisherBackend(&Backend{})
 
 const defaultVisibilityTimeoutS = time.Second * 20
 
@@ -37,7 +40,7 @@ type Metadata struct {
 }
 
 // Publish a message represented by the payload, with specified attributes to the specific topic
-func (g *backend) Publish(ctx context.Context, message *hedwig.Message, payload []byte, attributes map[string]string, topic string) (string, error) {
+func (g *Backend) Publish(ctx context.Context, message *hedwig.Message, payload []byte, attributes map[string]string, topic string) (string, error) {
 	err := g.ensureClient(ctx)
 	if err != nil {
 		return "", err
@@ -62,7 +65,7 @@ func (g *backend) Publish(ctx context.Context, message *hedwig.Message, payload 
 
 // Receive messages from configured queue(s) and provide it through the callback. This should run indefinitely
 // until the context is canceled. Provider metadata should include all info necessary to ack/nack a message.
-func (g *backend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback hedwig.ConsumerCallback) error {
+func (g *Backend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback hedwig.ConsumerCallback) error {
 	err := g.ensureClient(ctx)
 	if err != nil {
 		return err
@@ -117,7 +120,7 @@ func (g *backend) Receive(ctx context.Context, numMessages uint32, visibilityTim
 }
 
 // RequeueDLQ re-queues everything in the Hedwig DLQ back into the Hedwig queue
-func (g *backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration) error {
+func (g *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration) error {
 	err := g.ensureClient(ctx)
 	if err != nil {
 		return err
@@ -208,18 +211,18 @@ func (g *backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 }
 
 // NackMessage nacks a message on the queue
-func (g *backend) NackMessage(ctx context.Context, providerMetadata interface{}) error {
+func (g *Backend) NackMessage(ctx context.Context, providerMetadata interface{}) error {
 	providerMetadata.(Metadata).pubsubMessage.Nack()
 	return nil
 }
 
 // AckMessage acknowledges a message on the queue
-func (g *backend) AckMessage(ctx context.Context, providerMetadata interface{}) error {
+func (g *Backend) AckMessage(ctx context.Context, providerMetadata interface{}) error {
 	providerMetadata.(Metadata).pubsubMessage.Ack()
 	return nil
 }
 
-func (g *backend) ensureClient(ctx context.Context) error {
+func (g *Backend) ensureClient(ctx context.Context) error {
 	googleCloudProject := g.settings.GoogleCloudProject
 	if googleCloudProject == "" {
 		creds, err := google.FindDefaultCredentials(ctx)
@@ -243,8 +246,8 @@ func (g *backend) ensureClient(ctx context.Context) error {
 	return nil
 }
 
-// NewBackend creates a backend for publishing and consuming from GCP
-// The provider metadata produced by this backend will have concrete type: gcp.Metadata
-func NewBackend(settings *hedwig.Settings) hedwig.IBackend {
-	return &backend{settings: settings}
+// NewBackend creates a Backend for publishing and consuming from GCP
+// The provider metadata produced by this Backend will have concrete type: gcp.Metadata
+func NewBackend(settings *hedwig.Settings) *Backend {
+	return &Backend{settings: settings}
 }
