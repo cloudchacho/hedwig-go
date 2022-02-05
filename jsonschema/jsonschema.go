@@ -105,7 +105,7 @@ func xVersionsExt() jsonschema.Extension {
 }
 
 // NewEncoderDecoderFromBytes creates an encoder / decoder from a byte encoded JSON schema file
-func NewEncoderDecoderFromBytes(schemaFile []byte, dataRegistry hedwig.DataFactoryRegistry) (*EncoderDecoder, error) {
+func NewEncoderDecoderFromBytes(schemaFile []byte, dataRegistry DataFactoryRegistry) (*EncoderDecoder, error) {
 	encoder := EncoderDecoder{
 		compiledSchemaMap: make(map[hedwig.MessageTypeMajorVersion]*jsonschema.Schema),
 		dataRegistry:      dataRegistry,
@@ -203,8 +203,8 @@ func NewEncoderDecoderFromBytes(schemaFile []byte, dataRegistry hedwig.DataFacto
 	return &encoder, nil
 }
 
-// NewMessageEncoder creates a new encoder from the given file
-func NewMessageEncoder(schemaFilePath string, dataRegistry hedwig.DataFactoryRegistry) (hedwig.Encoder, error) {
+// NewMessageEncoderDecoder creates a new encoder from the given file
+func NewMessageEncoderDecoder(schemaFilePath string, dataRegistry DataFactoryRegistry) (*EncoderDecoder, error) {
 	rawSchema, err := ioutil.ReadFile(schemaFilePath)
 	if err != nil {
 		return nil, err
@@ -239,7 +239,7 @@ type messageDeserializationContainer struct {
 type EncoderDecoder struct {
 	compiledSchemaMap map[hedwig.MessageTypeMajorVersion]*jsonschema.Schema
 
-	dataRegistry hedwig.DataFactoryRegistry
+	dataRegistry DataFactoryRegistry
 
 	schemaID string
 }
@@ -366,7 +366,7 @@ func (ed *EncoderDecoder) DecodeData(messageType string, version *semver.Version
 		return nil, errors.Errorf("Unknown schema: %v", schemaKey)
 	}
 
-	var dataFactory hedwig.DataFactory
+	var dataFactory DataFactory
 	if dataFactory, ok = ed.dataRegistry[hedwig.MessageTypeMajorVersion{
 		MessageType:  messageType,
 		MajorVersion: uint(version.Major()),
@@ -384,3 +384,9 @@ func (ed *EncoderDecoder) DecodeData(messageType string, version *semver.Version
 	}
 	return decoded, nil
 }
+
+// DataFactory is a function that returns a pointer to struct type that a hedwig message data should conform to
+type DataFactory func() interface{}
+
+// DataFactoryRegistry is the map of message type and major versions to a factory function
+type DataFactoryRegistry map[hedwig.MessageTypeMajorVersion]DataFactory

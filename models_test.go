@@ -14,39 +14,26 @@ type fakeHedwigDataField struct {
 	VehicleID string `json:"vehicle_id"`
 }
 
-func createTestSettings() *Settings {
-	s := &Settings{
-		AWSRegion:     "us-east-1",
-		AWSAccountID:  "1234567890",
-		PublisherName: "myapp",
-		QueueName:     "DEV-MYAPP",
-	}
-	s.initDefaults()
-	return s
-}
-
 func TestCreateMetadata(t *testing.T) {
 	assertions := assert.New(t)
 
 	now := time.Now()
 	headers := map[string]string{"X-Request-Id": "abc123"}
-	settings := createTestSettings()
 
-	metadata := createMetadata(settings, headers)
+	metadata := createMetadata(headers, "myapp")
 	assertions.NotNil(metadata)
 
 	assertions.Equal(headers, metadata.Headers)
-	assertions.Equal(settings.PublisherName, metadata.Publisher)
+	assertions.Equal("myapp", metadata.Publisher)
 	assertions.Nil(metadata.ProviderMetadata)
-	assertions.True(time.Time(metadata.Timestamp).UnixNano() >= now.UnixNano())
+	assertions.True(metadata.Timestamp.UnixNano() >= now.UnixNano())
 }
 
 func TestNewMessageWithIDSuccess(t *testing.T) {
 	assertions := assert.New(t)
 
 	headers := map[string]string{"X-Request-Id": "abc123"}
-	settings := createTestSettings()
-	metadata := createMetadata(settings, headers)
+	metadata := createMetadata(headers, "myapp")
 	assertions.NotNil(metadata)
 
 	id := "abcdefgh"
@@ -54,7 +41,7 @@ func TestNewMessageWithIDSuccess(t *testing.T) {
 	msgDataSchemaVersion := "1.0"
 	data := fakeHedwigDataField{}
 
-	m, err := newMessageWithID(settings, id, msgDataType, msgDataSchemaVersion, metadata, &data)
+	m, err := newMessageWithID(id, msgDataType, msgDataSchemaVersion, metadata, &data)
 	require.NoError(t, err)
 
 	assertions.Equal(data, *m.Data.(*fakeHedwigDataField))
@@ -70,15 +57,14 @@ func TestNewMessageWithIDEmptySchemaVersion(t *testing.T) {
 	assertions := assert.New(t)
 
 	headers := map[string]string{"X-Request-Id": "abc123"}
-	settings := createTestSettings()
-	metadata := createMetadata(settings, headers)
+	metadata := createMetadata(headers, "myapp")
 	assertions.NotNil(metadata)
 
 	id := "abcdefgh"
 	msgDataType := "vehicle_created"
 	msgDataSchemaVersion := ""
 
-	_, err := newMessageWithID(settings, id, msgDataType, msgDataSchemaVersion, metadata, &fakeHedwigDataField{})
+	_, err := newMessageWithID(id, msgDataType, msgDataSchemaVersion, metadata, &fakeHedwigDataField{})
 	assertions.NotNil(err)
 }
 
@@ -86,15 +72,14 @@ func TestNewMessageWithIDInvalidSchemaVersion(t *testing.T) {
 	assertions := assert.New(t)
 
 	headers := map[string]string{"X-Request-Id": "abc123"}
-	settings := createTestSettings()
-	metadata := createMetadata(settings, headers)
+	metadata := createMetadata(headers, "myapp")
 	assertions.NotNil(metadata)
 
 	id := "abcdefgh"
 	msgDataType := "vehicle_created"
 	msgDataSchemaVersion := "a.b"
 
-	_, err := newMessageWithID(settings, id, msgDataType, msgDataSchemaVersion, metadata, &fakeHedwigDataField{})
+	_, err := newMessageWithID(id, msgDataType, msgDataSchemaVersion, metadata, &fakeHedwigDataField{})
 	assertions.NotNil(err)
 }
 
@@ -102,15 +87,14 @@ func TestNewMessageWithIDNilData(t *testing.T) {
 	assertions := assert.New(t)
 
 	headers := map[string]string{"X-Request-Id": "abc123"}
-	settings := createTestSettings()
-	metadata := createMetadata(settings, headers)
+	metadata := createMetadata(headers, "myapp")
 	assertions.NotNil(metadata)
 
 	id := "abcdefgh"
 	msgDataType := "vehicle_created"
 	msgDataSchemaVersion := "1.0"
 
-	_, err := newMessageWithID(settings, id, msgDataType, msgDataSchemaVersion, metadata, nil)
+	_, err := newMessageWithID(id, msgDataType, msgDataSchemaVersion, metadata, nil)
 	assertions.NotNil(err)
 }
 
@@ -118,12 +102,11 @@ func TestNewMessage(t *testing.T) {
 	assertions := assert.New(t)
 
 	headers := map[string]string{"X-Request-Id": "abc123"}
-	settings := createTestSettings()
 	msgDataType := "vehicle_created"
 	msgDataSchemaVersion := "1.0"
 	data := fakeHedwigDataField{}
 
-	m, err := NewMessage(settings, msgDataType, msgDataSchemaVersion, headers, &data)
+	m, err := NewMessage(msgDataType, msgDataSchemaVersion, headers, &data, "myapp")
 	require.NoError(t, err)
 
 	assertions.Equal(data, *m.Data.(*fakeHedwigDataField))

@@ -1313,7 +1313,7 @@ func (s *BackendTestSuite) TestNew() {
 type BackendTestSuite struct {
 	suite.Suite
 	backend              *Backend
-	settings             *hedwig.Settings
+	settings             *Settings
 	fakeSQS              *fakeSQS
 	fakeSNS              *fakeSNS
 	message              *hedwig.Message
@@ -1326,25 +1326,17 @@ type BackendTestSuite struct {
 
 func (s *BackendTestSuite) SetupTest() {
 	logger := &fakeLogger{}
-	settings := &hedwig.Settings{
+	settings := &Settings{
 		AWSRegion:    "us-east-1",
 		AWSAccountID: "1234567890",
-		QueueName:    "DEV-MYAPP",
-		MessageRouting: map[hedwig.MessageTypeMajorVersion]string{
-			{
-				MessageType:  "user-created",
-				MajorVersion: 1,
-			}: "dev-user-created-v1",
-		},
-		GetLogger: func(ctx context.Context) hedwig.ILogger {
-			return logger
-		},
-		ShutdownTimeout: time.Second * 10,
+	}
+	getLogger := func(_ context.Context) hedwig.Logger {
+		return logger
 	}
 	fakeSQS := &fakeSQS{}
 	fakeSNS := &fakeSNS{}
 	fakeMessageCallback := &fakeConsumerCallback{}
-	message, err := hedwig.NewMessage(settings, "user-created", "1.0", map[string]string{"foo": "bar"}, &fakeHedwigDataField{})
+	message, err := hedwig.NewMessage("user-created", "1.0", map[string]string{"foo": "bar"}, &fakeHedwigDataField{}, "myapp")
 	require.NoError(s.T(), err)
 
 	validator := &fakeValidator{}
@@ -1352,7 +1344,7 @@ func (s *BackendTestSuite) SetupTest() {
 	payload := []byte(`{"vehicle_id": "C_123"}`)
 	attributes := map[string]string{"foo": "bar"}
 
-	s.backend = NewBackend(settings, NewAWSSessionsCache())
+	s.backend = NewBackend("DEV-MYAPP", settings, NewAWSSessionsCache(), getLogger)
 	s.backend.sqs = fakeSQS
 	s.backend.sns = fakeSNS
 	s.settings = settings

@@ -57,7 +57,7 @@ func (s *ValidatorTestSuite) TestSerialize() {
 
 	payload := []byte("user-created/1.0 C_123")
 
-	s.encoder.On("EncodeData", s.message.Data, *s.settings.UseTransportMessageAttributes, s.metaAttrs).
+	s.encoder.On("EncodeData", s.message.Data, true, s.metaAttrs).
 		Return(payload, nil)
 
 	s.decoder.On("DecodeMessageType", schema).Return(s.message.Type, s.message.DataSchemaVersion, nil)
@@ -74,7 +74,7 @@ func (s *ValidatorTestSuite) TestSerialize() {
 }
 
 func (s *ValidatorTestSuite) TestSerializeContainerized() {
-	*s.settings.UseTransportMessageAttributes = false
+	s.validator.withUseTransportMessageAttributes(false)
 
 	s.encoder.On("VerifyKnownMinorVersion", s.message.Type, s.message.DataSchemaVersion).Return(nil)
 	schema := "user-created/1.0"
@@ -83,7 +83,7 @@ func (s *ValidatorTestSuite) TestSerializeContainerized() {
 	payload := []byte("user-created/1.0 C_123")
 	data := map[string]string{"vehicle_id": "C_123"}
 
-	s.encoder.On("EncodeData", s.message.Data, *s.settings.UseTransportMessageAttributes, s.metaAttrs).
+	s.encoder.On("EncodeData", s.message.Data, false, s.metaAttrs).
 		Return(payload, nil)
 
 	s.decoder.On("ExtractData", payload, s.metaAttrs.Headers).Return(s.metaAttrs, data, nil)
@@ -101,7 +101,7 @@ func (s *ValidatorTestSuite) TestSerializeContainerized() {
 }
 
 func (s *ValidatorTestSuite) TestSerializeUnknownMinor() {
-	message, err := NewMessage(s.settings, "user-created", "1.0", nil, fakeHedwigDataField{VehicleID: "C_123"})
+	message, err := NewMessage("user-created", "1.0", nil, fakeHedwigDataField{VehicleID: "C_123"}, "myapp")
 	require.NoError(s.T(), err)
 
 	s.encoder.On("VerifyKnownMinorVersion", message.Type, message.DataSchemaVersion).Return(errors.New("unknown minor version"))
@@ -117,7 +117,7 @@ func (s *ValidatorTestSuite) TestSerializeEncodeFailed() {
 	schema := "user-created/1.0"
 	s.encoder.On("EncodeMessageType", s.message.Type, s.message.DataSchemaVersion).Return(schema)
 
-	s.encoder.On("EncodeData", s.message.Data, *s.settings.UseTransportMessageAttributes, s.metaAttrs).
+	s.encoder.On("EncodeData", s.message.Data, true, s.metaAttrs).
 		Return([]byte(""), errors.New("can't serialize data"))
 
 	_, _, err := s.validator.serialize(s.message)
@@ -133,7 +133,7 @@ func (s *ValidatorTestSuite) TestSerializeValidationFailure() {
 
 	payload := []byte("user-created/1.0 C_123")
 
-	s.encoder.On("EncodeData", s.message.Data, *s.settings.UseTransportMessageAttributes, s.metaAttrs).
+	s.encoder.On("EncodeData", s.message.Data, true, s.metaAttrs).
 		Return(payload, nil)
 
 	s.decoder.On("DecodeMessageType", schema).
@@ -164,7 +164,7 @@ func (s *ValidatorTestSuite) TestDeserialize() {
 func (s *ValidatorTestSuite) TestDeserializeExtractionFailure() {
 	payload := []byte("user-created/1.0 C_123")
 
-	*s.settings.UseTransportMessageAttributes = false
+	s.validator.withUseTransportMessageAttributes(false)
 
 	s.decoder.On("ExtractData", payload, s.attributes).
 		Return(MetaAttributes{}, nil, errors.New("invalid payload"))
@@ -214,7 +214,7 @@ func (s *ValidatorTestSuite) TestDeserializeInvalidData() {
 }
 
 func (s *ValidatorTestSuite) TestDeserializeInvalidHeaders() {
-	*s.settings.UseTransportMessageAttributes = false
+	s.validator.withUseTransportMessageAttributes(false)
 
 	payload := []byte("user-created/1.0 C_123")
 	data := map[string]string{"vehicle_id": "C_123"}
@@ -329,7 +329,6 @@ type ValidatorTestSuite struct {
 	suite.Suite
 	validator  *messageValidator
 	backend    *fakeBackend
-	settings   *Settings
 	encoder    *fakeEncoder
 	decoder    *fakeDecoder
 	attributes map[string]string
@@ -338,36 +337,23 @@ type ValidatorTestSuite struct {
 }
 
 func (s *ValidatorTestSuite) SetupTest() {
-	settings := &Settings{
-		AWSRegion:    "us-east-1",
-		AWSAccountID: "1234567890",
-		QueueName:    "dev-myapp",
-		MessageRouting: map[MessageTypeMajorVersion]string{
-			{
-				MessageType:  "user-created",
-				MajorVersion: 1,
-			}: "dev-user-created-v1",
-		},
-		PublisherName: "myapp",
-	}
 	backend := &fakeBackend{}
 	encoder := &fakeEncoder{}
 	decoder := &fakeDecoder{}
 	message, err := NewMessage(
-		settings, "user-created", "1.0", map[string]string{"foo": "bar"}, fakeHedwigDataField{VehicleID: "C_123"})
+		"user-created", "1.0", map[string]string{"foo": "bar"}, fakeHedwigDataField{VehicleID: "C_123"}, "myapp")
 	require.NoError(s.T(), err)
 	// fixed timestamp
 	message.Metadata.Timestamp = time.Unix(1621550514, 123000000)
 	schema := "user-created/1.0"
 
-	s.validator = newMessageValidator(settings, encoder, decoder)
+	s.validator = newMessageValidator(encoder, decoder)
 	s.encoder = encoder
 	s.decoder = decoder
 	s.backend = backend
-	s.settings = settings
 	s.attributes = map[string]string{
 		"hedwig_message_timestamp": "1621550514123",
-		"hedwig_publisher":         settings.PublisherName,
+		"hedwig_publisher":         "myapp",
 		"foo":                      "bar",
 		"hedwig_id":                message.ID,
 		"hedwig_schema":            schema,

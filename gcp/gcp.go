@@ -11,13 +11,15 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2/google"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/api/option"
 
 	"github.com/cloudchacho/hedwig-go"
 )
 
 type Backend struct {
-	settings *hedwig.Settings
-	client   *pubsub.Client
+	client    *pubsub.Client
+	settings  *Settings
+	getLogger hedwig.GetLoggerFunc
 }
 
 var _ = hedwig.ConsumerBackend(&Backend{})
@@ -174,7 +176,7 @@ func (g *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 		for {
 			select {
 			case <-progressTicker.C:
-				g.settings.GetLogger(ctx).Info("Re-queue DLQ progress", hedwig.LoggingFields{"num_messages": atomic.LoadUint32(&numMessagesRequeued)})
+				g.getLogger(ctx).Info("Re-queue DLQ progress", hedwig.LoggingFields{"num_messages": atomic.LoadUint32(&numMessagesRequeued)})
 			case <-rctx.Done():
 				return
 			}
@@ -246,8 +248,50 @@ func (g *Backend) ensureClient(ctx context.Context) error {
 	return nil
 }
 
+// SubscriptionProject represents a tuple of subscription name and project for cross-project Google subscriptions
+type SubscriptionProject struct {
+	// Subscription name
+	Subscription string
+
+	// ProjectID
+	ProjectID string
+}
+
+// Settings for Hedwig
+type Settings struct {
+	// Hedwig queue name. Exclude the `HEDWIG-` prefix
+	QueueName string
+
+	// GoogleCloudProject ID that contains Pub/Sub resources.
+	GoogleCloudProject string
+
+	// PubsubClientOptions is a list of options to pass to pubsub.NewClient. This may be useful to customize GRPC
+	// behavior for example.
+	PubsubClientOptions []option.ClientOption
+
+	// Subscriptions is a list of all the Hedwig topics that the app is subscribed to (exclude the ``hedwig-`` prefix).
+	// For subscribing to cross-project topic messages, use SubscriptionsCrossProject. Google only.
+	Subscriptions []string
+
+	// SubscriptionsCrossProject is a list of tuples of topic name and GCP project for cross-project topic messages.
+	// Google only.
+	SubscriptionsCrossProject []SubscriptionProject
+}
+
+func (b *Backend) initDefaults() {
+	if b.settings.PubsubClientOptions == nil {
+		b.settings.PubsubClientOptions = []option.ClientOption{}
+	}
+	if b.getLogger == nil {
+		stdLogger := &hedwig.StdLogger{}
+		b.getLogger = func(_ context.Context) hedwig.Logger { return stdLogger }
+	}
+}
+
 // NewBackend creates a Backend for publishing and consuming from GCP
 // The provider metadata produced by this Backend will have concrete type: gcp.Metadata
-func NewBackend(settings *hedwig.Settings) *Backend {
-	return &Backend{settings: settings}
+func NewBackend(settings *Settings, getLogger hedwig.GetLoggerFunc) *Backend {
+	b := &Backend{settings: settings, getLogger: getLogger}
+	b.initDefaults()
+	return b
 }

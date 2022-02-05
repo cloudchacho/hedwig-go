@@ -17,7 +17,7 @@ func (s *PublisherTestSuite) TestPublish() {
 	data := fakeHedwigDataField{
 		VehicleID: "C_1234567890123456",
 	}
-	message, err := NewMessage(s.settings, "user-created", "1.0", nil, &data)
+	message, err := NewMessage("user-created", "1.0", nil, &data, "myapp")
 	s.Require().NoError(err)
 
 	payload := []byte(`{"type": "user-created"}`)
@@ -44,7 +44,7 @@ func (s *PublisherTestSuite) TestPublishTopicError() {
 	data := fakeHedwigDataField{
 		VehicleID: "C_1234567890123456",
 	}
-	message, err := NewMessage(s.settings, "user-created", "2.0", nil, &data)
+	message, err := NewMessage("user-created", "2.0", nil, &data, "myapp")
 	s.Require().NoError(err)
 
 	payload := []byte(`{"type": "user-created"}`)
@@ -65,7 +65,7 @@ func (s *PublisherTestSuite) TestPublishSerializeError() {
 	data := fakeHedwigDataField{
 		VehicleID: "C_1234567890123456",
 	}
-	message, err := NewMessage(s.settings, "user-created", "2.0", nil, &data)
+	message, err := NewMessage("user-created", "2.0", nil, &data, "myapp")
 	s.Require().NoError(err)
 
 	s.serializer.On("serialize", message).
@@ -86,7 +86,7 @@ func (s *PublisherTestSuite) TestPublishSendsTraceID() {
 	data := fakeHedwigDataField{
 		VehicleID: "C_1234567890123456",
 	}
-	message, err := NewMessage(s.settings, "user-created", "1.0", nil, &data)
+	message, err := NewMessage("user-created", "1.0", nil, &data, "myapp")
 	s.Require().NoError(err)
 
 	payload := []byte(`{"type": "user-created"}`)
@@ -126,7 +126,6 @@ type PublisherTestSuite struct {
 	suite.Suite
 	publisher  *Publisher
 	backend    *fakeBackend
-	settings   *Settings
 	serializer *fakeSerializer
 }
 
@@ -139,26 +138,24 @@ func (f *fakeSerializer) serialize(message *Message) ([]byte, map[string]string,
 	return args.Get(0).([]byte), args.Get(1).(map[string]string), args.Error(2)
 }
 
+func (f *fakeSerializer) withUseTransportMessageAttributes(useTransportMessageAttributes bool) {
+	f.Called(useTransportMessageAttributes)
+}
+
 func (s *PublisherTestSuite) SetupTest() {
-	settings := &Settings{
-		AWSRegion:    "us-east-1",
-		AWSAccountID: "1234567890",
-		QueueName:    "dev-myapp",
-		MessageRouting: map[MessageTypeMajorVersion]string{
-			{
-				MessageType:  "user-created",
-				MajorVersion: 1,
-			}: "dev-user-created-v1",
-		},
+	routing := map[MessageTypeMajorVersion]string{
+		{
+			MessageType:  "user-created",
+			MajorVersion: 1,
+		}: "dev-user-created-v1",
 	}
 	backend := &fakeBackend{}
 	serializer := &fakeSerializer{}
 
-	s.publisher = NewPublisher(settings, backend, nil, nil)
+	s.publisher = NewPublisher(backend, nil, nil, routing)
 	s.publisher.serializer = serializer
 	s.backend = backend
 	s.serializer = serializer
-	s.settings = settings
 }
 
 func TestPublisherTestSuite(t *testing.T) {

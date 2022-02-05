@@ -150,7 +150,7 @@ func (s *BackendTestSuite) TestReceiveCrossProject() {
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 
-	s.settings.SubscriptionsCrossProject = []hedwig.SubscriptionProject{{"dev-user-created-v1", "other-project"}}
+	s.settings.SubscriptionsCrossProject = []gcp.SubscriptionProject{{"dev-user-created-v1", "other-project"}}
 	s.settings.Subscriptions = []string{}
 
 	payload := []byte(`{"vehicle_id": "C_123"}`)
@@ -397,7 +397,7 @@ type BackendTestSuite struct {
 	suite.Suite
 	backend              *gcp.Backend
 	client               *pubsub.Client
-	settings             *hedwig.Settings
+	settings             *gcp.Settings
 	message              *hedwig.Message
 	payload              []byte
 	attributes           map[string]string
@@ -496,21 +496,16 @@ func (s *BackendTestSuite) TearDownSuite() {
 func (s *BackendTestSuite) SetupTest() {
 	logger := &fakeLogger{}
 
-	settings := &hedwig.Settings{
+	settings := &gcp.Settings{
 		GoogleCloudProject: "emulator-project",
 		QueueName:          "dev-myapp",
-		MessageRouting: map[hedwig.MessageTypeMajorVersion]string{
-			{
-				MessageType:  "user-created",
-				MajorVersion: 1,
-			}: "dev-user-created-v1",
-		},
-		Subscriptions:   []string{"dev-user-created-v1"},
-		ShutdownTimeout: time.Second * 10,
-		GetLogger:       func(_ context.Context) hedwig.ILogger { return logger },
+		Subscriptions:      []string{"dev-user-created-v1"},
+	}
+	getLogger := func(_ context.Context) hedwig.Logger {
+		return logger
 	}
 	fakeMessageCallback := &fakeConsumerCallback{}
-	message, err := hedwig.NewMessage(settings, "user-created", "1.0", map[string]string{"foo": "bar"}, &fakeHedwigDataField{})
+	message, err := hedwig.NewMessage("user-created", "1.0", map[string]string{"foo": "bar"}, &fakeHedwigDataField{}, "myapp")
 	require.NoError(s.T(), err)
 
 	validator := &fakeValidator{}
@@ -518,7 +513,7 @@ func (s *BackendTestSuite) SetupTest() {
 	payload := []byte(`{"vehicle_id": "C_123"}`)
 	attributes := map[string]string{"foo": "bar"}
 
-	s.backend = gcp.NewBackend(settings)
+	s.backend = gcp.NewBackend(settings, getLogger)
 	s.settings = settings
 	s.message = message
 	s.validator = validator

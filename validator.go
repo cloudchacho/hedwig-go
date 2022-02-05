@@ -21,10 +21,10 @@ type MetaAttributes struct {
 }
 
 type messageValidator struct {
-	encoder              Encoder
-	decoder              Decoder
-	currentFormatVersion *semver.Version
-	settings             *Settings
+	encoder                       Encoder
+	decoder                       Decoder
+	currentFormatVersion          *semver.Version
+	useTransportMessageAttributes bool
 }
 
 // decodeMetaAttributes decodes message transport attributes as MetaAttributes
@@ -107,12 +107,12 @@ func (v *messageValidator) serialize(message *Message) ([]byte, map[string]strin
 		schema,
 		v.currentFormatVersion,
 	}
-	messagePayload, err := v.encoder.EncodeData(message.Data, *v.settings.UseTransportMessageAttributes, metaAttrs)
+	messagePayload, err := v.encoder.EncodeData(message.Data, v.useTransportMessageAttributes, metaAttrs)
 	if err != nil {
 		return nil, nil, err
 	}
 	var attributes map[string]string
-	if *v.settings.UseTransportMessageAttributes {
+	if v.useTransportMessageAttributes {
 		attributes = v.encodeMetaAttributes(metaAttrs)
 	} else {
 		attributes = message.Metadata.Headers
@@ -129,7 +129,7 @@ func (v *messageValidator) deserialize(messagePayload []byte, attributes map[str
 	var metaAttrs MetaAttributes
 	var data interface{}
 	var err error
-	if *v.settings.UseTransportMessageAttributes {
+	if v.useTransportMessageAttributes {
 		metaAttrs, err = v.decodeMetaAttributes(attributes)
 		if err != nil {
 			return nil, err
@@ -179,12 +179,16 @@ func (v *messageValidator) verifyHeaders(headers map[string]string) error {
 	return nil
 }
 
-func newMessageValidator(settings *Settings, encoder Encoder, decoder Decoder) *messageValidator {
-	settings.initDefaults()
-	return &messageValidator{
+func (v *messageValidator) withUseTransportMessageAttributes(useTransportMessageAttributes bool) {
+	v.useTransportMessageAttributes = useTransportMessageAttributes
+}
+
+func newMessageValidator(encoder Encoder, decoder Decoder) *messageValidator {
+	v := &messageValidator{
 		encoder:              encoder,
 		decoder:              decoder,
 		currentFormatVersion: semver.MustParse("1.0"),
-		settings:             settings,
 	}
+	v.useTransportMessageAttributes = true
+	return v
 }

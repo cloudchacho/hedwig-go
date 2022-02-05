@@ -3,8 +3,6 @@ package aws
 import (
 	"sync"
 
-	"github.com/cloudchacho/hedwig-go"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -50,7 +48,7 @@ func NewAWSSessionsCache() *SessionsCache {
 	}
 }
 
-func (c *SessionsCache) getOrCreateSession(settings *hedwig.Settings) *session.Session {
+func (c *SessionsCache) getOrCreateSession(settings *Settings) *session.Session {
 	key := sessionKey{awsRegion: settings.AWSRegion, awsAccessKeyID: settings.AWSAccessKey, awsSessionToken: settings.AWSSessionToken}
 	s, ok := c.sessionMap.Load(key)
 	if !ok {
@@ -61,6 +59,6 @@ func (c *SessionsCache) getOrCreateSession(settings *hedwig.Settings) *session.S
 }
 
 // GetSession retrieves a session if it is cached, otherwise creates one
-func (c *SessionsCache) GetSession(settings *hedwig.Settings) *session.Session {
+func (c *SessionsCache) GetSession(settings *Settings) *session.Session {
 	return c.getOrCreateSession(settings)
 }

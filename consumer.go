@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/Masterminds/semver"
 	"github.com/pkg/errors"
 )
 
@@ -15,9 +16,10 @@ type ListenRequest struct {
 
 type Consumer struct {
 	backend      ConsumerBackend
-	settings     *Settings
 	deserializer deserializer
 	instrumenter Instrumenter
+	registry     CallbackRegistry
+	getLogger    GetLoggerFunc
 }
 
 type QueueConsumer struct {
@@ -39,14 +41,14 @@ func (c *Consumer) processMessage(ctx context.Context, payload []byte, attribute
 		if !acked {
 			err := c.backend.NackMessage(ctx, providerMetadata)
 			if err != nil {
-				c.settings.GetLogger(ctx).Error(err, "Failed to nack message", loggingFields)
+				c.getLogger(ctx).Error(err, "Failed to nack message", loggingFields)
 			}
 		}
 	}()
 
 	message, err := c.deserializer.deserialize(payload, attributes, providerMetadata)
 	if err != nil {
-		c.settings.GetLogger(ctx).Error(err, "invalid message, unable to unmarshal", loggingFields)
+		c.getLogger(ctx).Error(err, "invalid message, unable to unmarshal", loggingFields)
 		return
 	}
 
@@ -59,9 +61,9 @@ func (c *Consumer) processMessage(ctx context.Context, payload []byte, attribute
 	callbackKey := MessageTypeMajorVersion{message.Type, uint(message.DataSchemaVersion.Major())}
 	var callback CallbackFunction
 	var ok bool
-	if callback, ok = c.settings.CallbackRegistry[callbackKey]; !ok {
+	if callback, ok = c.registry[callbackKey]; !ok {
 		msg := "no callback defined for message"
-		c.settings.GetLogger(ctx).Error(errors.New(msg), msg, loggingFields)
+		c.getLogger(ctx).Error(errors.New(msg), msg, loggingFields)
 		return
 	}
 
@@ -70,14 +72,14 @@ func (c *Consumer) processMessage(ctx context.Context, payload []byte, attribute
 	case nil:
 		ackErr := c.backend.AckMessage(ctx, providerMetadata)
 		if ackErr != nil {
-			c.settings.GetLogger(ctx).Error(ackErr, "Failed to ack message", loggingFields)
+			c.getLogger(ctx).Error(ackErr, "Failed to ack message", loggingFields)
 		} else {
 			acked = true
 		}
 	case ErrRetry:
-		c.settings.GetLogger(ctx).Debug("Retrying due to exception", loggingFields)
+		c.getLogger(ctx).Debug("Retrying due to exception", loggingFields)
 	default:
-		c.settings.GetLogger(ctx).Error(err, "Retrying due to unknown exception", loggingFields)
+		c.getLogger(ctx).Error(err, "Retrying due to unknown exception", loggingFields)
 	}
 }
 
@@ -122,19 +124,74 @@ func wrapCallback(function CallbackFunction) CallbackFunction {
 
 type deserializer interface {
 	deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}) (*Message, error)
+	withUseTransportMessageAttributes(useTransportMessageAttributes bool)
 }
 
-func NewQueueConsumer(settings *Settings, backend ConsumerBackend, decoder Decoder) *QueueConsumer {
-	settings.initDefaults()
+func (v *QueueConsumer) withUseTransportMessageAttributes(useTransportMessageAttributes bool) {
+	v.deserializer.withUseTransportMessageAttributes(useTransportMessageAttributes)
+}
 
-	for key, callback := range settings.CallbackRegistry {
-		settings.CallbackRegistry[key] = wrapCallback(callback)
+func (v *QueueConsumer) initDefaults() {
+	if v.getLogger == nil {
+		stdLogger := &StdLogger{}
+		v.getLogger = func(_ context.Context) Logger { return stdLogger }
+	}
+}
+
+func NewQueueConsumer(backend ConsumerBackend, decoder Decoder, getLogger GetLoggerFunc, registry CallbackRegistry) *QueueConsumer {
+	for key, callback := range registry {
+		registry[key] = wrapCallback(callback)
 	}
 
-	return &QueueConsumer{
+	c := &QueueConsumer{
 		Consumer: Consumer{
+			getLogger:    getLogger,
+			registry:     registry,
 			backend:      backend,
-			deserializer: newMessageValidator(settings, nil, decoder),
+			deserializer: newMessageValidator(nil, decoder),
 		},
 	}
+	c.initDefaults()
+	return c
+}
+
+// CallbackFunction is the function signature for a hedwig callback function
+type CallbackFunction func(context.Context, *Message) error
+
+// CallbackRegistry is a map of message type and major versions to callback functions
+type CallbackRegistry map[MessageTypeMajorVersion]CallbackFunction
+
+// ErrRetry should cause the task to retry, but not treat the retry as an error
+var ErrRetry = errors.New("Retry error")
+
+// ConsumerBackend is used for consuming messages from a transport
+type ConsumerBackend interface {
+	// Receive messages from configured queue(s) and provide it through the callback. This should run indefinitely
+	// until the context is canceled. Provider metadata should include all info necessary to ack/nack a message.
+	Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback ConsumerCallback) error
+
+	// NackMessage nacks a message on the queue
+	NackMessage(ctx context.Context, providerMetadata interface{}) error
+
+	// AckMessage acknowledges a message on the queue
+	AckMessage(ctx context.Context, providerMetadata interface{}) error
+
+	//HandleLambdaEvent(ctx context.Context, settings *Settings, snsEvent events.SNSEvent) error
+
+	// RequeueDLQ re-queues everything in the Hedwig DLQ back into the Hedwig queue
+	RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration) error
+}
+
+type ConsumerCallback func(ctx context.Context, payload []byte, attributes map[string]string, providerMetadata interface{})
+
+// Decoder is responsible for decoding the message payload in appropriate format from over the wire transport format
+type Decoder interface {
+	// DecodeData validates and decodes data
+	DecodeData(messageType string, version *semver.Version, data interface{}) (interface{}, error)
+
+	// ExtractData extracts data from the on-the-wire payload when not using message transport
+	ExtractData(messagePayload []byte, attributes map[string]string) (MetaAttributes, interface{}, error)
+
+	// DecodeMessageType decodes message type from meta attributes
+	DecodeMessageType(schema string) (string, *semver.Version, error)
 }

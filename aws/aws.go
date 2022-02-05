@@ -22,10 +22,12 @@ import (
 )
 
 type Backend struct {
-	settings *hedwig.Settings
+	settings *Settings
 
-	sqs sqsiface.SQSAPI
-	sns snsiface.SNSAPI
+	sqs       sqsiface.SQSAPI
+	sns       snsiface.SNSAPI
+	getLogger hedwig.GetLoggerFunc
+	queueName string
 }
 
 var _ = hedwig.ConsumerBackend(&Backend{})
@@ -52,11 +54,11 @@ type Metadata struct {
 const sqsWaitTimeoutSeconds int64 = 20
 
 func (a *Backend) getSQSQueueName() string {
-	return fmt.Sprintf("HEDWIG-%s", a.settings.QueueName)
+	return fmt.Sprintf("HEDWIG-%s", a.queueName)
 }
 
 func (a *Backend) getSQSDLQName() string {
-	return fmt.Sprintf("HEDWIG-%s-DLQ", a.settings.QueueName)
+	return fmt.Sprintf("HEDWIG-%s-DLQ", a.queueName)
 }
 
 func (a *Backend) getSNSTopic(messageTopic string) string {
@@ -197,7 +199,7 @@ func (a *Backend) Receive(ctx context.Context, numMessages uint32, visibilityTim
 				if encoding, ok := attributes["hedwig_encoding"]; ok && encoding == "base64" {
 					payload, err = base64.StdEncoding.DecodeString(string(payload))
 					if err != nil {
-						a.settings.GetLogger(ctx).Error(
+						a.getLogger(ctx).Error(
 							err,
 							"Invalid message payload - couldn't decode using base64",
 							hedwig.LoggingFields{"message_id": queueMessage.MessageId},
@@ -282,7 +284,7 @@ func (a *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 			return errors.New("failed to send some messages")
 		}
 		numMessagesRequeued += uint32(len(sendOut.Successful))
-		a.settings.GetLogger(ctx).Info("Re-queue DLQ progress", hedwig.LoggingFields{"num_messages": numMessagesRequeued})
+		a.getLogger(ctx).Info("Re-queue DLQ progress", hedwig.LoggingFields{"num_messages": numMessagesRequeued})
 	}
 }
 
@@ -306,15 +308,44 @@ func (a *Backend) AckMessage(ctx context.Context, providerMetadata interface{}) 
 	return err
 }
 
+// Settings for AWS Backend
+type Settings struct {
+	// AWS Region
+	AWSRegion string
+	// AWS account id
+	AWSAccountID string
+	// AWS access key
+	AWSAccessKey string
+	// AWS secret key
+	AWSSecretKey string
+	// AWS session token that represents temporary credentials (i.e. for Lambda app)
+	AWSSessionToken string
+	// AWS read timeout for Publisher
+	AWSReadTimeoutS time.Duration // optional; default: 2 seconds
+}
+
+func (b *Backend) initDefaults() {
+	if b.settings.AWSReadTimeoutS == 0 {
+		b.settings.AWSReadTimeoutS = 2 * time.Second
+	}
+	if b.getLogger == nil {
+		stdLogger := &hedwig.StdLogger{}
+		b.getLogger = func(_ context.Context) hedwig.Logger { return stdLogger }
+	}
+}
+
 // NewBackend creates a Backend for publishing and consuming from AWS
 // The provider metadata produced by this Backend will have concrete type: aws.Metadata
-func NewBackend(settings *hedwig.Settings, sessionCache *SessionsCache) *Backend {
-
+func NewBackend(queueName string, settings *Settings, sessionCache *SessionsCache, getLogger hedwig.GetLoggerFunc) *Backend {
 	awsSession := sessionCache.GetSession(settings)
 
-	return &Backend{
-		settings,
-		sqs.New(awsSession),
-		sns.New(awsSession),
+	b := &Backend{
+		queueName: queueName,
+		settings:  settings,
+		sqs:       sqs.New(awsSession),
+		sns:       sns.New(awsSession),
+		getLogger: getLogger,
 	}
+	b.initDefaults()
+	return b
 }

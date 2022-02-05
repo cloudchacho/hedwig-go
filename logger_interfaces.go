@@ -9,8 +9,8 @@ import (
 
 type LoggingFields map[string]interface{}
 
-// ILogger represents an logging interface that this library expects
-type ILogger interface {
+// Logger represents an logging interface that this library expects
+type Logger interface {
 	// Error logs an error with a message. `fields` can be used as additional metadata for structured logging.
 	// You can generally expect one of these fields to be available: message_sqs_id, message_sns_id.
 	// By default fields are logged as a map using fmt.Sprintf
@@ -47,25 +47,25 @@ func (l *logrusLogger) Debug(message string, fields LoggingFields) {
 }
 
 func LogrusGetLoggerFunc(fn func(ctx context.Context) *logrus.Entry) GetLoggerFunc {
-	return func(ctx context.Context) ILogger {
+	return func(ctx context.Context) Logger {
 		return &logrusLogger{fn(ctx)}
 	}
 }
 
-type stdLogger struct{}
+type StdLogger struct{}
 
-func (s *stdLogger) Error(err error, message string, fields LoggingFields) {
+func (s *StdLogger) Error(err error, message string, fields LoggingFields) {
 	log.Printf("[ERROR] %s [error: %+v][fields: %+v]\n", message, err, fields)
 }
 
-func (s *stdLogger) Warn(err error, message string, fields LoggingFields) {
+func (s *StdLogger) Warn(err error, message string, fields LoggingFields) {
 	log.Printf("[WARN] %s [error: %+v][fields: %+v]\n", message, err, fields)
 }
 
-func (s *stdLogger) Info(message string, fields LoggingFields) {
+func (s *StdLogger) Info(message string, fields LoggingFields) {
 	log.Printf("[INFO] %s [fields: %+v]\n", message, fields)
 }
 
-func (s *stdLogger) Debug(message string, fields LoggingFields) {
+func (s *StdLogger) Debug(message string, fields LoggingFields) {
 	log.Printf("[DEBUG] %s [fields: %+v]\n", message, fields)
 }

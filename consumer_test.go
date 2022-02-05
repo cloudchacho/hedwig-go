@@ -212,7 +212,7 @@ func (s *ConsumerTestSuite) TestProcessMessageCallbackNotFound() {
 	message := Message{Type: "user-created", DataSchemaVersion: semver.MustParse("1.0")}
 	s.deserializer.On("deserialize", payload, attributes, providerMetadata).
 		Return(&message, nil)
-	delete(s.consumer.settings.CallbackRegistry, MessageTypeMajorVersion{"user-created", 1})
+	delete(s.consumer.registry, MessageTypeMajorVersion{"user-created", 1})
 	s.backend.On("NackMessage", ctx, providerMetadata).
 		Return(nil)
 	s.consumer.processMessage(ctx, payload, attributes, providerMetadata)
@@ -322,6 +322,10 @@ func (f *fakeDeserializer) deserialize(messagePayload []byte, attributes map[str
 	return args.Get(0).(*Message), args.Error(1)
 }
 
+func (f *fakeDeserializer) withUseTransportMessageAttributes(useTransportMessageAttributes bool) {
+	f.Called(useTransportMessageAttributes)
+}
+
 type ConsumerTestSuite struct {
 	suite.Suite
 	consumer     *QueueConsumer
@@ -334,18 +338,15 @@ type ConsumerTestSuite struct {
 func (s *ConsumerTestSuite) SetupTest() {
 	callback := &fakeCallback{}
 	logger := &fakeLogger{}
-
-	settings := &Settings{
-		AWSRegion:        "us-east-1",
-		AWSAccountID:     "1234567890",
-		QueueName:        "dev-myapp",
-		CallbackRegistry: CallbackRegistry{MessageTypeMajorVersion{"user-created", 1}: callback.Callback},
-		GetLogger:        func(_ context.Context) ILogger { return logger },
+	getLogger := func(_ context.Context) Logger {
+		return logger
 	}
+
+	registry := CallbackRegistry{MessageTypeMajorVersion{"user-created", 1}: callback.Callback}
 	backend := &fakeBackend{}
 	deserializer := &fakeDeserializer{}
 
-	s.consumer = NewQueueConsumer(settings, backend, nil)
+	s.consumer = NewQueueConsumer(backend, nil, getLogger, registry)
 	s.consumer.deserializer = deserializer
 	s.backend = backend
 	s.callback = callback

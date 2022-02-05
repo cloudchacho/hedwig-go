@@ -38,7 +38,7 @@ func (s *EncoderTestSuite) TestFormatHumanUUID() {
 	}
 }`)
 	newString := func() interface{} { return new(string) }
-	encoder, err := NewEncoderDecoderFromBytes(testSchema, hedwig.DataFactoryRegistry{hedwig.MessageTypeMajorVersion{"vehicle_created", 1}: newString})
+	encoder, err := NewEncoderDecoderFromBytes(testSchema, DataFactoryRegistry{hedwig.MessageTypeMajorVersion{"vehicle_created", 1}: newString})
 	s.NoError(err)
 
 	data := json.RawMessage(`"6cac5588-24cc-4b4f-bbf9-7dc0ce93f96e"`)
@@ -82,7 +82,7 @@ func (s *EncoderTestSuite) TestInvalidXVersion() {
 	}
 }`)
 	newString := func() interface{} { return new(string) }
-	_, err := NewEncoderDecoderFromBytes(testSchema, hedwig.DataFactoryRegistry{hedwig.MessageTypeMajorVersion{"vehicle_created", 1}: newString})
+	_, err := NewEncoderDecoderFromBytes(testSchema, DataFactoryRegistry{hedwig.MessageTypeMajorVersion{"vehicle_created", 1}: newString})
 	s.EqualError(err, "Missing x-version from schema definition for vehicle_created")
 
 	testSchema = []byte(`{
@@ -98,7 +98,7 @@ func (s *EncoderTestSuite) TestInvalidXVersion() {
 		}
 	}
 }`)
-	_, err = NewEncoderDecoderFromBytes(testSchema, hedwig.DataFactoryRegistry{hedwig.MessageTypeMajorVersion{"vehicle_created", 1}: newString})
+	_, err = NewEncoderDecoderFromBytes(testSchema, DataFactoryRegistry{hedwig.MessageTypeMajorVersion{"vehicle_created", 1}: newString})
 	s.EqualError(err, "invalid value for x-version: foobar, must be semver")
 
 	testSchema = []byte(`{
@@ -114,7 +114,7 @@ func (s *EncoderTestSuite) TestInvalidXVersion() {
 		}
 	}
 }`)
-	_, err = NewEncoderDecoderFromBytes(testSchema, hedwig.DataFactoryRegistry{hedwig.MessageTypeMajorVersion{"vehicle_created", 1}: newString})
+	_, err = NewEncoderDecoderFromBytes(testSchema, DataFactoryRegistry{hedwig.MessageTypeMajorVersion{"vehicle_created", 1}: newString})
 	s.Error(err)
 }
 
@@ -303,11 +303,11 @@ type EncoderTestSuite struct {
 }
 
 func (s *EncoderTestSuite) SetupTest() {
-	registry := hedwig.DataFactoryRegistry{hedwig.MessageTypeMajorVersion{"vehicle_created", 1}: newFakeHedwigDataField}
-	encoder, err := NewMessageEncoder("schema.json", registry)
+	registry := DataFactoryRegistry{hedwig.MessageTypeMajorVersion{"vehicle_created", 1}: newFakeHedwigDataField}
+	encoder, err := NewMessageEncoderDecoder("schema.json", registry)
 	require.NoError(s.T(), err)
 
-	s.encoder = encoder.(*EncoderDecoder)
+	s.encoder = encoder
 }
 
 func TestEncoderTestSuite(t *testing.T) {
@@ -347,7 +347,7 @@ func TestInvalidSchemaNotMajorVersion(t *testing.T) {
 		}
 	}
 	`
-	v, err := NewEncoderDecoderFromBytes([]byte(invalidSchema), hedwig.DataFactoryRegistry{})
+	v, err := NewEncoderDecoderFromBytes([]byte(invalidSchema), DataFactoryRegistry{})
 	assertions.Nil(v)
 	assertions.Error(err)
 }
@@ -385,7 +385,7 @@ func TestInvalidSchemaMajorVersionMismatch(t *testing.T) {
 		}
 	}
 	`
-	v, err := NewEncoderDecoderFromBytes([]byte(invalidSchema), hedwig.DataFactoryRegistry{})
+	v, err := NewEncoderDecoderFromBytes([]byte(invalidSchema), DataFactoryRegistry{})
 	assertions.Nil(v)
 	assertions.Error(err)
 }
@@ -422,7 +422,7 @@ func TestInvalidSchemaNoXVersion(t *testing.T) {
 		}
 	}
 	`
-	v, err := NewEncoderDecoderFromBytes([]byte(invalidSchema), hedwig.DataFactoryRegistry{})
+	v, err := NewEncoderDecoderFromBytes([]byte(invalidSchema), DataFactoryRegistry{})
 	assertions.Nil(v)
 	assertions.Error(err)
 }
@@ -430,7 +430,7 @@ func TestInvalidSchemaNoXVersion(t *testing.T) {
 func TestInvalidSchemaNotJSON(t *testing.T) {
 	assertions := assert.New(t)
 	invalidSchema := `"https://github.com/cloudchacho/hedwig-go/schema"`
-	v, err := NewEncoderDecoderFromBytes([]byte(invalidSchema), hedwig.DataFactoryRegistry{})
+	v, err := NewEncoderDecoderFromBytes([]byte(invalidSchema), DataFactoryRegistry{})
 	assertions.Nil(v)
 	assertions.Error(err)
 }
@@ -438,7 +438,7 @@ func TestInvalidSchemaNotJSON(t *testing.T) {
 func TestInvalidSchemaNotObject(t *testing.T) {
 	assertions := assert.New(t)
 	invalidSchema := `foobar`
-	v, err := NewEncoderDecoderFromBytes([]byte(invalidSchema), hedwig.DataFactoryRegistry{})
+	v, err := NewEncoderDecoderFromBytes([]byte(invalidSchema), DataFactoryRegistry{})
 	assertions.Nil(v)
 	assertions.Error(err)
 }
@@ -476,7 +476,7 @@ func TestInvalidSchemaMessageTypeNotFound(t *testing.T) {
 		}
 	}
 	`
-	v, err := NewEncoderDecoderFromBytes([]byte(schema), hedwig.DataFactoryRegistry{{"user-created", 1}: newFakeHedwigDataField})
+	v, err := NewEncoderDecoderFromBytes([]byte(schema), DataFactoryRegistry{{"user-created", 1}: newFakeHedwigDataField})
 	assertions.Nil(v)
 	assertions.EqualError(err, "Schema not found for message type user-created, major version 1")
 }
