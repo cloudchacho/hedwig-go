@@ -126,6 +126,7 @@ And start the consumer:
     err := consumer.ListenForMessages(context.Background(), hedwig.ListenRequest{})
 ```
 
+For more complete code, see [examples](examples).
 
 ## Development
 
