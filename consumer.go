@@ -1,13 +1,10 @@
-/*
- * Author: Michael Ngo
- */
-
 package hedwig
 
 import (
 	"context"
 	"time"
 
+	"github.com/Masterminds/semver"
 	"github.com/pkg/errors"
 )
 
@@ -17,35 +14,19 @@ type ListenRequest struct {
 	VisibilityTimeout time.Duration // defaults to queue configuration
 }
 
-// IQueueConsumer represents a hedwig queue consumer
-type IQueueConsumer interface {
-	// ListenForMessages starts a hedwig listener for the provided message types
-	//
-	// This function never returns by default. It can be shut down by canceling the context.
-	ListenForMessages(ctx context.Context, request ListenRequest) error
-
-	// RequeueDLQ re-queues everything in the Hedwig DLQ back into the Hedwig queue
-	//
-	// This function runs until there are no more messages in the dead letter queue.
-	// It can be aborted by canceling the context
-	RequeueDLQ(ctx context.Context, request ListenRequest) error
-
-	// WithInstrumenter adds a instrumenter to this consumer
-	WithInstrumenter(instrumenter Instrumenter) IQueueConsumer
-}
-
-type consumer struct {
-	backend      IBackend
-	settings     *Settings
-	validator    IMessageValidator
+type Consumer struct {
+	backend      ConsumerBackend
+	deserializer deserializer
 	instrumenter Instrumenter
+	registry     CallbackRegistry
+	getLogger    GetLoggerFunc
 }
 
-type queueConsumer struct {
-	consumer
+type QueueConsumer struct {
+	Consumer
 }
 
-func (c *consumer) processMessage(ctx context.Context, payload []byte, attributes map[string]string, providerMetadata interface{}) {
+func (c *Consumer) processMessage(ctx context.Context, payload []byte, attributes map[string]string, providerMetadata interface{}) {
 	if c.instrumenter != nil {
 		var finalize func()
 		ctx, finalize = c.instrumenter.OnReceive(ctx, attributes)
@@ -60,14 +41,14 @@ func (c *consumer) processMessage(ctx context.Context, payload []byte, attribute
 		if !acked {
 			err := c.backend.NackMessage(ctx, providerMetadata)
 			if err != nil {
-				c.settings.GetLogger(ctx).Error(err, "Failed to nack message", loggingFields)
+				c.getLogger(ctx).Error(err, "Failed to nack message", loggingFields)
 			}
 		}
 	}()
 
-	message, err := c.validator.Deserialize(payload, attributes, providerMetadata)
+	message, err := c.deserializer.deserialize(payload, attributes, providerMetadata)
 	if err != nil {
-		c.settings.GetLogger(ctx).Error(err, "invalid message, unable to unmarshal", loggingFields)
+		c.getLogger(ctx).Error(err, "invalid message, unable to unmarshal", loggingFields)
 		return
 	}
 
@@ -80,9 +61,9 @@ func (c *consumer) processMessage(ctx context.Context, payload []byte, attribute
 	callbackKey := MessageTypeMajorVersion{message.Type, uint(message.DataSchemaVersion.Major())}
 	var callback CallbackFunction
 	var ok bool
-	if callback, ok = c.settings.CallbackRegistry[callbackKey]; !ok {
+	if callback, ok = c.registry[callbackKey]; !ok {
 		msg := "no callback defined for message"
-		c.settings.GetLogger(ctx).Error(errors.New(msg), msg, loggingFields)
+		c.getLogger(ctx).Error(errors.New(msg), msg, loggingFields)
 		return
 	}
 
@@ -91,19 +72,19 @@ func (c *consumer) processMessage(ctx context.Context, payload []byte, attribute
 	case nil:
 		ackErr := c.backend.AckMessage(ctx, providerMetadata)
 		if ackErr != nil {
-			c.settings.GetLogger(ctx).Error(ackErr, "Failed to ack message", loggingFields)
+			c.getLogger(ctx).Error(ackErr, "Failed to ack message", loggingFields)
 		} else {
 			acked = true
 		}
 	case ErrRetry:
-		c.settings.GetLogger(ctx).Debug("Retrying due to exception", loggingFields)
+		c.getLogger(ctx).Debug("Retrying due to exception", loggingFields)
 	default:
-		c.settings.GetLogger(ctx).Error(err, "Retrying due to unknown exception", loggingFields)
+		c.getLogger(ctx).Error(err, "Retrying due to unknown exception", loggingFields)
 	}
 }
 
 // ListenForMessages starts a hedwig listener for the provided message types
-func (c *queueConsumer) ListenForMessages(ctx context.Context, request ListenRequest) error {
+func (c *QueueConsumer) ListenForMessages(ctx context.Context, request ListenRequest) error {
 	if request.NumMessages == 0 {
 		request.NumMessages = 1
 	}
@@ -112,7 +93,7 @@ func (c *queueConsumer) ListenForMessages(ctx context.Context, request ListenReq
 }
 
 // RequeueDLQ re-queues everything in the Hedwig DLQ back into the Hedwig queue
-func (c *queueConsumer) RequeueDLQ(ctx context.Context, request ListenRequest) error {
+func (c *QueueConsumer) RequeueDLQ(ctx context.Context, request ListenRequest) error {
 	if request.NumMessages == 0 {
 		request.NumMessages = 1
 	}
@@ -120,9 +101,20 @@ func (c *queueConsumer) RequeueDLQ(ctx context.Context, request ListenRequest) e
 	return c.backend.RequeueDLQ(ctx, request.NumMessages, request.VisibilityTimeout)
 }
 
-func (c *queueConsumer) WithInstrumenter(instrumenter Instrumenter) IQueueConsumer {
+func (c *QueueConsumer) WithInstrumenter(instrumenter Instrumenter) *QueueConsumer {
 	c.instrumenter = instrumenter
 	return c
+}
+
+func (c *QueueConsumer) WithUseTransportMessageAttributes(useTransportMessageAttributes bool) {
+	c.deserializer.withUseTransportMessageAttributes(useTransportMessageAttributes)
+}
+
+func (c *QueueConsumer) initDefaults() {
+	if c.getLogger == nil {
+		stdLogger := &StdLogger{}
+		c.getLogger = func(_ context.Context) Logger { return stdLogger }
+	}
 }
 
 func wrapCallback(function CallbackFunction) CallbackFunction {
@@ -141,18 +133,65 @@ func wrapCallback(function CallbackFunction) CallbackFunction {
 	}
 }
 
-func NewQueueConsumer(settings *Settings, backend IBackend, encoder IEncoder) IQueueConsumer {
-	settings.initDefaults()
+type deserializer interface {
+	deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}) (*Message, error)
+	withUseTransportMessageAttributes(useTransportMessageAttributes bool)
+}
 
-	for key, callback := range settings.CallbackRegistry {
-		settings.CallbackRegistry[key] = wrapCallback(callback)
+func NewQueueConsumer(backend ConsumerBackend, decoder Decoder, getLogger GetLoggerFunc, registry CallbackRegistry) *QueueConsumer {
+	for key, callback := range registry {
+		registry[key] = wrapCallback(callback)
 	}
 
-	return &queueConsumer{
-		consumer: consumer{
-			backend:   backend,
-			settings:  settings,
-			validator: NewMessageValidator(settings, encoder),
+	c := &QueueConsumer{
+		Consumer: Consumer{
+			getLogger:    getLogger,
+			registry:     registry,
+			backend:      backend,
+			deserializer: newMessageValidator(nil, decoder),
 		},
 	}
+	c.initDefaults()
+	return c
+}
+
+// CallbackFunction is the function signature for a hedwig callback function
+type CallbackFunction func(context.Context, *Message) error
+
+// CallbackRegistry is a map of message type and major versions to callback functions
+type CallbackRegistry map[MessageTypeMajorVersion]CallbackFunction
+
+// ErrRetry should cause the task to retry, but not treat the retry as an error
+var ErrRetry = errors.New("Retry error")
+
+// ConsumerBackend is used for consuming messages from a transport
+type ConsumerBackend interface {
+	// Receive messages from configured queue(s) and provide it through the callback. This should run indefinitely
+	// until the context is canceled. Provider metadata should include all info necessary to ack/nack a message.
+	Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback ConsumerCallback) error
+
+	// NackMessage nacks a message on the queue
+	NackMessage(ctx context.Context, providerMetadata interface{}) error
+
+	// AckMessage acknowledges a message on the queue
+	AckMessage(ctx context.Context, providerMetadata interface{}) error
+
+	//HandleLambdaEvent(ctx context.Context, settings *Settings, snsEvent events.SNSEvent) error
+
+	// RequeueDLQ re-queues everything in the Hedwig DLQ back into the Hedwig queue
+	RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration) error
+}
+
+type ConsumerCallback func(ctx context.Context, payload []byte, attributes map[string]string, providerMetadata interface{})
+
+// Decoder is responsible for decoding the message payload in appropriate format from over the wire transport format
+type Decoder interface {
+	// DecodeData validates and decodes data
+	DecodeData(messageType string, version *semver.Version, data interface{}) (interface{}, error)
+
+	// ExtractData extracts data from the on-the-wire payload when not using message transport
+	ExtractData(messagePayload []byte, attributes map[string]string) (MetaAttributes, interface{}, error)
+
+	// DecodeMessageType decodes message type from meta attributes
+	DecodeMessageType(schema string) (string, *semver.Version, error)
 }

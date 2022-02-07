@@ -1,7 +1,3 @@
-/*
- * Author: Aniruddha Maru
- */
-
 package hedwig
 
 import (

@@ -73,5 +73,3 @@ $ AWS_REGION=$(aws configure get region)
 $ AWS_ACCOUNT_ID=$(aws sts get-caller-identity | jq -r '.Account')
 $ AWS_REGION=$AWS_REGION AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID SETTINGS_MODULE=example_aws_settings go run . publisher
 ```
-
-You can also provide your own schema files / modules by customizing [settings](example_settings.go).

@@ -258,7 +258,7 @@ func (s *EncoderTestSuite) TestNew() {
 
 type EncoderTestSuite struct {
 	suite.Suite
-	encoder hedwig.IEncoder
+	encoder *protobuf.EncoderDecoder
 }
 
 func (s *EncoderTestSuite) SetupTest() {
@@ -268,7 +268,7 @@ func (s *EncoderTestSuite) SetupTest() {
 		&internal.DeviceCreatedV1{},
 		&internal.VehicleCreatedV1{},
 	}
-	encoder, err := protobuf.NewMessageEncoder(protoMsgs)
+	encoder, err := protobuf.NewMessageEncoderDecoder(protoMsgs)
 	require.NoError(s.T(), err)
 
 	s.encoder = encoder
@@ -283,7 +283,7 @@ func TestNewMessageEncoderFromMessageTypes(t *testing.T) {
 	protoMsgs := map[hedwig.MessageTypeMajorVersion]protoreflect.Message{
 		{MessageType: "device_created", MajorVersion: 1}: (&internal.DeviceCreated{}).ProtoReflect(),
 	}
-	v, err := protobuf.NewMessageEncoderFromMessageTypes(protoMsgs)
+	v, err := protobuf.NewMessageEncoderDecoderFromMessageTypes(protoMsgs)
 	assertions.NoError(err)
 	assertions.NotNil(v)
 }
@@ -293,7 +293,7 @@ func TestNewMessageEncoderFromMessageTypesInvalidMessageType(t *testing.T) {
 	invalidProtoMsgs := map[hedwig.MessageTypeMajorVersion]protoreflect.Message{
 		{"", 1}: (&internal.DeviceCreated{}).ProtoReflect(),
 	}
-	v, err := protobuf.NewMessageEncoderFromMessageTypes(invalidProtoMsgs)
+	v, err := protobuf.NewMessageEncoderDecoderFromMessageTypes(invalidProtoMsgs)
 	assertions.Nil(v)
 	assertions.Error(err)
 }
@@ -303,7 +303,7 @@ func TestNewMessageEncoderFromMessageTypesInvalidMajorVersion(t *testing.T) {
 	invalidProtoMsgs := map[hedwig.MessageTypeMajorVersion]protoreflect.Message{
 		{"device_created", 0}: (&internal.DeviceCreated{}).ProtoReflect(),
 	}
-	v, err := protobuf.NewMessageEncoderFromMessageTypes(invalidProtoMsgs)
+	v, err := protobuf.NewMessageEncoderDecoderFromMessageTypes(invalidProtoMsgs)
 	assertions.Nil(v)
 	assertions.Error(err)
 }
@@ -313,7 +313,7 @@ func TestNewMessageEncoderFromMessageTypesMessageTypeMismatch(t *testing.T) {
 	invalidProtoMsgs := map[hedwig.MessageTypeMajorVersion]protoreflect.Message{
 		{"device_created", 1}: (&internal.VehicleCreatedV1{}).ProtoReflect(),
 	}
-	v, err := protobuf.NewMessageEncoderFromMessageTypes(invalidProtoMsgs)
+	v, err := protobuf.NewMessageEncoderDecoderFromMessageTypes(invalidProtoMsgs)
 	assertions.Nil(v)
 	assertions.Error(err)
 }
@@ -323,7 +323,7 @@ func TestNewMessageEncoderFromMessageTypesMajorVersionMismatch(t *testing.T) {
 	invalidProtoMsgs := map[hedwig.MessageTypeMajorVersion]protoreflect.Message{
 		{"vehicle_created", 2}: (&internal.VehicleCreatedV1{}).ProtoReflect(),
 	}
-	v, err := protobuf.NewMessageEncoderFromMessageTypes(invalidProtoMsgs)
+	v, err := protobuf.NewMessageEncoderDecoderFromMessageTypes(invalidProtoMsgs)
 	assertions.Nil(v)
 	assertions.Error(err)
 }
@@ -333,7 +333,7 @@ func TestInvalidSchemaBadNameNoMessageType(t *testing.T) {
 	invalidProtoMsgs := []proto.Message{
 		&internal.DeviceCreated{},
 	}
-	v, err := protobuf.NewMessageEncoder(invalidProtoMsgs)
+	v, err := protobuf.NewMessageEncoderDecoder(invalidProtoMsgs)
 	assertions.Nil(v)
 	assertions.Error(err)
 }
@@ -343,7 +343,7 @@ func TestInvalidSchemaBadNameNoMajorVersion(t *testing.T) {
 	invalidProtoMsgs := []proto.Message{
 		&internal.DeviceCreatedNew{},
 	}
-	v, err := protobuf.NewMessageEncoder(invalidProtoMsgs)
+	v, err := protobuf.NewMessageEncoderDecoder(invalidProtoMsgs)
 	assertions.Nil(v)
 	assertions.Error(err)
 }
@@ -353,7 +353,7 @@ func TestInvalidSchemaMajorVersionMismatch(t *testing.T) {
 	invalidProtoMsgs := []proto.Message{
 		&internal.TripCreatedV4{},
 	}
-	v, err := protobuf.NewMessageEncoder(invalidProtoMsgs)
+	v, err := protobuf.NewMessageEncoderDecoder(invalidProtoMsgs)
 	assertions.Nil(v)
 	assertions.Error(err)
 }
@@ -364,7 +364,7 @@ func TestInvalidSchemaDuplicate(t *testing.T) {
 		&internal.TripCreatedV2{},
 		&internal.TripCreatedV2New{},
 	}
-	v, err := protobuf.NewMessageEncoder(invalidProtoMsgs)
+	v, err := protobuf.NewMessageEncoderDecoder(invalidProtoMsgs)
 	assertions.Nil(v)
 	assertions.Error(err)
 }

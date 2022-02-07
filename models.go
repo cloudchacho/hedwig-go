@@ -1,11 +1,6 @@
-/*
- * Author: Michael Ngo
- */
-
 package hedwig
 
 import (
-	"context"
 	"time"
 
 	"github.com/Masterminds/semver"
@@ -37,28 +32,17 @@ type Message struct {
 	Metadata          metadata
 }
 
-// Publish the message
-func (m *Message) Publish(ctx context.Context, publisher IPublisher) (string, error) {
-	return publisher.Publish(ctx, m)
-}
-
-// Serialize the message for appropriate on-the-wire format
-func (m *Message) Serialize(validator IMessageValidator) ([]byte, map[string]string, error) {
-	return validator.Serialize(m)
-}
-
-func createMetadata(settings *Settings, headers map[string]string) metadata {
+func createMetadata(headers map[string]string, publisherName string) metadata {
 	return metadata{
 		Headers:   headers,
-		Publisher: settings.PublisherName,
+		Publisher: publisherName,
 		Timestamp: time.Now(),
 	}
 }
 
 // newMessageWithID creates new Hedwig messages
 func newMessageWithID(
-	settings *Settings, id string, dataType string, dataSchemaVersion string,
-	metadata metadata, data interface{}) (*Message, error) {
+	id string, dataType string, dataSchemaVersion string, metadata metadata, data interface{}) (*Message, error) {
 	if data == nil {
 		return nil, errors.New("expected non-nil data")
 	}
@@ -79,7 +63,7 @@ func newMessageWithID(
 }
 
 // NewMessage creates new Hedwig messages based off of message type and Schema version
-func NewMessage(settings *Settings, dataType string, dataSchemaVersion string, headers map[string]string, data interface{}) (*Message, error) {
+func NewMessage(dataType string, dataSchemaVersion string, headers map[string]string, data interface{}, publisherName string) (*Message, error) {
 	// Generate uuid for ID
 	msgUUID := uuid.NewV4()
 	msgID := msgUUID.String()
@@ -88,5 +72,5 @@ func NewMessage(settings *Settings, dataType string, dataSchemaVersion string, h
 		headers = make(map[string]string)
 	}
 
-	return newMessageWithID(settings, msgID, dataType, dataSchemaVersion, createMetadata(settings, headers), data)
+	return newMessageWithID(msgID, dataType, dataSchemaVersion, createMetadata(headers, publisherName), data)
 }

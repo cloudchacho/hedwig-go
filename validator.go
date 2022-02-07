@@ -11,15 +11,6 @@ import (
 	"github.com/Masterminds/semver"
 )
 
-// IMessageValidator handles validating Hedwig messages
-type IMessageValidator interface {
-	// Serialize the message for appropriate format for transport over the wire
-	Serialize(message *Message) ([]byte, map[string]string, error)
-
-	// Deserialize the message from the format over the wire
-	Deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}) (*Message, error)
-}
-
 type MetaAttributes struct {
 	Timestamp     time.Time
 	Publisher     string
@@ -29,31 +20,11 @@ type MetaAttributes struct {
 	FormatVersion *semver.Version
 }
 
-// IEncoder is responsible for encoding the message payload in appropriate format for over the wire transport
-type IEncoder interface {
-	// EncodeData encodes the message with appropriate format for transport over the wire
-	EncodeData(data interface{}, useMessageTransport bool, metaAttrs MetaAttributes) ([]byte, error)
-
-	// DecodeData validates and decodes data
-	DecodeData(messageType string, version *semver.Version, data interface{}) (interface{}, error)
-
-	// VerifyKnownMinorVersion checks that message version is known to us
-	VerifyKnownMinorVersion(messageType string, version *semver.Version) error
-
-	// EncodeMessageType encodes the message type with appropriate format for transport over the wire
-	EncodeMessageType(messageType string, version *semver.Version) string
-
-	// DecodeMessageType decodes message type from meta attributes
-	DecodeMessageType(schema string) (string, *semver.Version, error)
-
-	// ExtractData extracts data from the on-the-wire payload when not using message transport
-	ExtractData(messagePayload []byte, attributes map[string]string) (MetaAttributes, interface{}, error)
-}
-
 type messageValidator struct {
-	encoder              IEncoder
-	currentFormatVersion *semver.Version
-	settings             *Settings
+	encoder                       Encoder
+	decoder                       Decoder
+	currentFormatVersion          *semver.Version
+	useTransportMessageAttributes bool
 }
 
 // decodeMetaAttributes decodes message transport attributes as MetaAttributes
@@ -118,7 +89,7 @@ func (v *messageValidator) encodeMetaAttributes(metaAttrs MetaAttributes) map[st
 	return attributes
 }
 
-func (v *messageValidator) Serialize(message *Message) ([]byte, map[string]string, error) {
+func (v *messageValidator) serialize(message *Message) ([]byte, map[string]string, error) {
 	err := v.encoder.VerifyKnownMinorVersion(message.Type, message.DataSchemaVersion)
 	if err != nil {
 		return nil, nil, err
@@ -136,36 +107,36 @@ func (v *messageValidator) Serialize(message *Message) ([]byte, map[string]strin
 		schema,
 		v.currentFormatVersion,
 	}
-	messagePayload, err := v.encoder.EncodeData(message.Data, *v.settings.UseTransportMessageAttributes, metaAttrs)
+	messagePayload, err := v.encoder.EncodeData(message.Data, v.useTransportMessageAttributes, metaAttrs)
 	if err != nil {
 		return nil, nil, err
 	}
 	var attributes map[string]string
-	if *v.settings.UseTransportMessageAttributes {
+	if v.useTransportMessageAttributes {
 		attributes = v.encodeMetaAttributes(metaAttrs)
 	} else {
 		attributes = message.Metadata.Headers
 	}
 	// validate payload from scratch before publishing
-	_, err = v.Deserialize(messagePayload, attributes, nil)
+	_, err = v.deserialize(messagePayload, attributes, nil)
 	if err != nil {
 		return nil, nil, err
 	}
 	return messagePayload, attributes, nil
 }
 
-func (v *messageValidator) Deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}) (*Message, error) {
+func (v *messageValidator) deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}) (*Message, error) {
 	var metaAttrs MetaAttributes
 	var data interface{}
 	var err error
-	if *v.settings.UseTransportMessageAttributes {
+	if v.useTransportMessageAttributes {
 		metaAttrs, err = v.decodeMetaAttributes(attributes)
 		if err != nil {
 			return nil, err
 		}
 		data = messagePayload
 	} else {
-		metaAttrs, data, err = v.encoder.ExtractData(messagePayload, attributes)
+		metaAttrs, data, err = v.decoder.ExtractData(messagePayload, attributes)
 	}
 	if err != nil {
 		return nil, err
@@ -177,11 +148,11 @@ func (v *messageValidator) Deserialize(messagePayload []byte, attributes map[str
 	if err != nil {
 		return nil, err
 	}
-	messageType, version, err := v.encoder.DecodeMessageType(metaAttrs.Schema)
+	messageType, version, err := v.decoder.DecodeMessageType(metaAttrs.Schema)
 	if err != nil {
 		return nil, err
 	}
-	data, err = v.encoder.DecodeData(messageType, version, data)
+	data, err = v.decoder.DecodeData(messageType, version, data)
 	if err != nil {
 		return nil, err
 	}
@@ -208,11 +179,16 @@ func (v *messageValidator) verifyHeaders(headers map[string]string) error {
 	return nil
 }
 
-func NewMessageValidator(settings *Settings, encoder IEncoder) IMessageValidator {
-	settings.initDefaults()
-	return &messageValidator{
+func (v *messageValidator) withUseTransportMessageAttributes(useTransportMessageAttributes bool) {
+	v.useTransportMessageAttributes = useTransportMessageAttributes
+}
+
+func newMessageValidator(encoder Encoder, decoder Decoder) *messageValidator {
+	v := &messageValidator{
 		encoder:              encoder,
+		decoder:              decoder,
 		currentFormatVersion: semver.MustParse("1.0"),
-		settings:             settings,
 	}
+	v.useTransportMessageAttributes = true
+	return v
 }

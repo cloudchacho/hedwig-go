@@ -20,16 +20,6 @@ type fakeHedwigDataField struct {
 	VehicleID string `json:"vehicle_id"`
 }
 
-func createTestSettings() *hedwig.Settings {
-	s := &hedwig.Settings{
-		AWSRegion:     "us-east-1",
-		AWSAccountID:  "1234567890",
-		PublisherName: "myapp",
-		QueueName:     "DEV-MYAPP",
-	}
-	return s
-}
-
 // testTracerProvider is a provider that returns tracer of type testTracer
 type testTracerProvider struct{}
 
@@ -83,8 +73,7 @@ func TestOnMessageDeserializedUpdatesName(t *testing.T) {
 	data := fakeHedwigDataField{
 		VehicleID: "C_1234567890123456",
 	}
-	settings := createTestSettings()
-	message, err := hedwig.NewMessage(settings, "user-created", "1.0", nil, &data)
+	message, err := hedwig.NewMessage("user-created", "1.0", nil, &data, "myapp")
 	r.NoError(err)
 
 	instrumenter.OnMessageDeserialized(ctx, message)
@@ -172,8 +161,7 @@ func TestOnPublishAttachesCurrentTrace(t *testing.T) {
 	data := fakeHedwigDataField{
 		VehicleID: "C_1234567890123456",
 	}
-	settings := createTestSettings()
-	message, err := hedwig.NewMessage(settings, "user-created", "1.0", nil, &data)
+	message, err := hedwig.NewMessage("user-created", "1.0", nil, &data, "myapp")
 	r.NoError(err)
 	attributes := map[string]string{}
 	ctx, attributes, finalize := instrumenter.OnPublish(ctx, message, attributes)

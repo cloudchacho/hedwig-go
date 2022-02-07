@@ -1,7 +1,3 @@
-/*
- * Author: Michael Ngo
- */
-
 package jsonschema
 
 import (
@@ -108,9 +104,9 @@ func xVersionsExt() jsonschema.Extension {
 	}
 }
 
-// NewEncoderFromBytes from an byte encoded schema file
-func NewEncoderFromBytes(schemaFile []byte, dataRegistry hedwig.DataFactoryRegistry) (hedwig.IEncoder, error) {
-	encoder := messageEncoder{
+// NewEncoderDecoderFromBytes creates an encoder / decoder from a byte encoded JSON schema file
+func NewEncoderDecoderFromBytes(schemaFile []byte, dataRegistry DataFactoryRegistry) (*EncoderDecoder, error) {
+	encoder := EncoderDecoder{
 		compiledSchemaMap: make(map[hedwig.MessageTypeMajorVersion]*jsonschema.Schema),
 		dataRegistry:      dataRegistry,
 	}
@@ -207,14 +203,14 @@ func NewEncoderFromBytes(schemaFile []byte, dataRegistry hedwig.DataFactoryRegis
 	return &encoder, nil
 }
 
-// NewMessageEncoder creates a new encoder from the given file
-func NewMessageEncoder(schemaFilePath string, dataRegistry hedwig.DataFactoryRegistry) (hedwig.IEncoder, error) {
+// NewMessageEncoderDecoder creates a new encoder from the given file
+func NewMessageEncoderDecoder(schemaFilePath string, dataRegistry DataFactoryRegistry) (*EncoderDecoder, error) {
 	rawSchema, err := ioutil.ReadFile(schemaFilePath)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewEncoderFromBytes(rawSchema, dataRegistry)
+	return NewEncoderDecoderFromBytes(rawSchema, dataRegistry)
 }
 
 type messageContainerMetadata struct {
@@ -239,21 +235,24 @@ type messageDeserializationContainer struct {
 	Data          json.RawMessage          `json:"data"`
 }
 
-// messageEncoder is an implementation of hedwig.IEncoder
-type messageEncoder struct {
+// EncoderDecoder is an implementation of hedwig.Encoder and hedwig.Decoder that uses JSON Schema
+type EncoderDecoder struct {
 	compiledSchemaMap map[hedwig.MessageTypeMajorVersion]*jsonschema.Schema
 
-	dataRegistry hedwig.DataFactoryRegistry
+	dataRegistry DataFactoryRegistry
 
 	schemaID string
 }
 
-func (me *messageEncoder) schemaRoot() string {
-	return me.schemaID
+var _ = hedwig.Encoder(&EncoderDecoder{})
+var _ = hedwig.Decoder(&EncoderDecoder{})
+
+func (ed *EncoderDecoder) schemaRoot() string {
+	return ed.schemaID
 }
 
 // EncodeData encodes the message with appropriate format for transport over the wire
-func (me *messageEncoder) EncodeData(data interface{}, useMessageTransport bool, metaAttrs hedwig.MetaAttributes) ([]byte, error) {
+func (ed *EncoderDecoder) EncodeData(data interface{}, useMessageTransport bool, metaAttrs hedwig.MetaAttributes) ([]byte, error) {
 	var payload []byte
 	var err error
 
@@ -284,10 +283,10 @@ func (me *messageEncoder) EncodeData(data interface{}, useMessageTransport bool,
 }
 
 // VerifyKnownMinorVersion checks that message version is known to us
-func (me *messageEncoder) VerifyKnownMinorVersion(messageType string, version *semver.Version) error {
+func (ed *EncoderDecoder) VerifyKnownMinorVersion(messageType string, version *semver.Version) error {
 	schemaKey := hedwig.MessageTypeMajorVersion{messageType, uint(version.Major())}
 
-	if schema, ok := me.compiledSchemaMap[schemaKey]; ok {
+	if schema, ok := ed.compiledSchemaMap[schemaKey]; ok {
 		schemaVersion := schema.Extensions[xVersionKey].(*semver.Version)
 		if schemaVersion.LessThan(version) {
 			return errors.Errorf("Unknown minor version: {%d}, last known minor version: %d",
@@ -299,14 +298,14 @@ func (me *messageEncoder) VerifyKnownMinorVersion(messageType string, version *s
 }
 
 // EncodeMessageType encodes the message type with appropriate format for transport over the wire
-func (me *messageEncoder) EncodeMessageType(messageType string, version *semver.Version) string {
-	return fmt.Sprintf("%s#/schemas/%s/%d.%d", me.schemaRoot(), messageType, version.Major(), version.Minor())
+func (ed *EncoderDecoder) EncodeMessageType(messageType string, version *semver.Version) string {
+	return fmt.Sprintf("%s#/schemas/%s/%d.%d", ed.schemaRoot(), messageType, version.Major(), version.Minor())
 }
 
 // DecodeMessageType decodes message type from meta attributes
-func (me *messageEncoder) DecodeMessageType(schema string) (string, *semver.Version, error) {
-	if !strings.HasPrefix(schema, me.schemaRoot()) {
-		return "", nil, errors.Errorf("Message schema must start with %s", me.schemaRoot())
+func (ed *EncoderDecoder) DecodeMessageType(schema string) (string, *semver.Version, error) {
+	if !strings.HasPrefix(schema, ed.schemaRoot()) {
+		return "", nil, errors.Errorf("Message schema must start with %s", ed.schemaRoot())
 	}
 
 	m := schemaRegex.FindStringSubmatch(schema)
@@ -324,7 +323,7 @@ func (me *messageEncoder) DecodeMessageType(schema string) (string, *semver.Vers
 }
 
 // ExtractData extracts data from the on-the-wire payload when not using message transport
-func (me *messageEncoder) ExtractData(messagePayload []byte, attributes map[string]string) (hedwig.MetaAttributes, interface{}, error) {
+func (ed *EncoderDecoder) ExtractData(messagePayload []byte, attributes map[string]string) (hedwig.MetaAttributes, interface{}, error) {
 	metaAttrs := hedwig.MetaAttributes{}
 
 	err := containerSchema.Validate(bytes.NewReader(messagePayload))
@@ -349,7 +348,7 @@ func (me *messageEncoder) ExtractData(messagePayload []byte, attributes map[stri
 }
 
 // DecodeData validates and decodes data
-func (me *messageEncoder) DecodeData(messageType string, version *semver.Version, data interface{}) (interface{}, error) {
+func (ed *EncoderDecoder) DecodeData(messageType string, version *semver.Version, data interface{}) (interface{}, error) {
 	var dataTyped []byte
 
 	if dataTypedRawMessage, ok := data.(json.RawMessage); ok {
@@ -363,12 +362,12 @@ func (me *messageEncoder) DecodeData(messageType string, version *semver.Version
 	var schema *jsonschema.Schema
 	var ok bool
 
-	if schema, ok = me.compiledSchemaMap[schemaKey]; !ok {
+	if schema, ok = ed.compiledSchemaMap[schemaKey]; !ok {
 		return nil, errors.Errorf("Unknown schema: %v", schemaKey)
 	}
 
-	var dataFactory hedwig.DataFactory
-	if dataFactory, ok = me.dataRegistry[hedwig.MessageTypeMajorVersion{
+	var dataFactory DataFactory
+	if dataFactory, ok = ed.dataRegistry[hedwig.MessageTypeMajorVersion{
 		MessageType:  messageType,
 		MajorVersion: uint(version.Major()),
 	}]; !ok {
@@ -385,3 +384,9 @@ func (me *messageEncoder) DecodeData(messageType string, version *semver.Version
 	}
 	return decoded, nil
 }
+
+// DataFactory is a function that returns a pointer to struct type that a hedwig message data should conform to
+type DataFactory func() interface{}
+
+// DataFactoryRegistry is the map of message type and major versions to a factory function
+type DataFactoryRegistry map[hedwig.MessageTypeMajorVersion]DataFactory
