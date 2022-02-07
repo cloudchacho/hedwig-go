@@ -11,7 +11,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/request"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sns"
 	"github.com/aws/aws-sdk-go/service/sns/snsiface"
 	"github.com/aws/aws-sdk-go/service/sqs"
@@ -22,12 +24,11 @@ import (
 )
 
 type Backend struct {
-	settings *Settings
+	settings Settings
 
 	sqs       sqsiface.SQSAPI
 	sns       snsiface.SNSAPI
 	getLogger hedwig.GetLoggerFunc
-	queueName string
 }
 
 var _ = hedwig.ConsumerBackend(&Backend{})
@@ -54,11 +55,11 @@ type Metadata struct {
 const sqsWaitTimeoutSeconds int64 = 20
 
 func (b *Backend) getSQSQueueName() string {
-	return fmt.Sprintf("HEDWIG-%s", b.queueName)
+	return fmt.Sprintf("HEDWIG-%s", b.settings.QueueName)
 }
 
 func (b *Backend) getSQSDLQName() string {
-	return fmt.Sprintf("HEDWIG-%s-DLQ", b.queueName)
+	return fmt.Sprintf("HEDWIG-%s-DLQ", b.settings.QueueName)
 }
 
 func (b *Backend) getSNSTopic(messageTopic string) string {
@@ -322,6 +323,8 @@ type Settings struct {
 	AWSSessionToken string
 	// AWS read timeout for Publisher
 	AWSReadTimeoutS time.Duration // optional; default: 2 seconds
+	// Name of the queue for this application
+	QueueName string
 }
 
 func (b *Backend) initDefaults() {
@@ -334,13 +337,35 @@ func (b *Backend) initDefaults() {
 	}
 }
 
+func createSession(region, awsAccessKey, awsSecretAccessKey, awsSessionToken string) *session.Session {
+	var creds *credentials.Credentials
+	if awsAccessKey != "" && awsSecretAccessKey != "" {
+		creds = credentials.NewStaticCredentialsFromCreds(
+			credentials.Value{
+				AccessKeyID:     awsAccessKey,
+				SecretAccessKey: awsSecretAccessKey,
+				SessionToken:    awsSessionToken,
+			},
+		)
+	}
+	return session.Must(session.NewSessionWithOptions(
+		session.Options{
+			Config: aws.Config{
+				Credentials: creds,
+				Region:      aws.String(region),
+				DisableSSL:  aws.Bool(false),
+			},
+		}))
+}
+
 // NewBackend creates a Backend for publishing and consuming from AWS
 // The provider metadata produced by this Backend will have concrete type: aws.Metadata
-func NewBackend(queueName string, settings *Settings, sessionCache *SessionsCache, getLogger hedwig.GetLoggerFunc) *Backend {
-	awsSession := sessionCache.GetSession(settings)
+func NewBackend(settings Settings, getLogger hedwig.GetLoggerFunc) *Backend {
+	awsSession := createSession(
+		settings.AWSRegion, settings.AWSAccessKey, settings.AWSSecretKey, settings.AWSSessionToken,
+	)
 
 	b := &Backend{
-		queueName: queueName,
 		settings:  settings,
 		sqs:       sqs.New(awsSession),
 		sns:       sns.New(awsSession),

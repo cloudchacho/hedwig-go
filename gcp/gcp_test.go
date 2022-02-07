@@ -153,6 +153,7 @@ func (s *BackendTestSuite) TestReceiveCrossProject() {
 
 	s.settings.SubscriptionsCrossProject = []gcp.SubscriptionProject{{"dev-user-created-v1", "other-project"}}
 	s.settings.Subscriptions = []string{}
+	backend := gcp.NewBackend(s.settings, nil)
 
 	payload := []byte(`{"vehicle_id": "C_123"}`)
 	attributes := map[string]string{
@@ -164,7 +165,7 @@ func (s *BackendTestSuite) TestReceiveCrossProject() {
 	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload, attributes, mock.AnythingOfType("gcp.Metadata")).
 		// message must be acked or Receive never returns
 		Run(func(args mock.Arguments) {
-			err := s.backend.AckMessage(ctx, args.Get(3))
+			err := backend.AckMessage(ctx, args.Get(3))
 			s.Require().NoError(err)
 			cancel()
 		}).
@@ -172,7 +173,7 @@ func (s *BackendTestSuite) TestReceiveCrossProject() {
 		Once()
 
 	testutils.RunAndWait(func() {
-		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
+		err := backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
 		s.True(err.Error() == "draining" || err == context.Canceled)
 	})
 
@@ -204,8 +205,10 @@ func (s *BackendTestSuite) TestReceiveError() {
 	s.settings.QueueName = "does-not-exist"
 	s.settings.Subscriptions = nil
 
+	backend := gcp.NewBackend(s.settings, nil)
+
 	testutils.RunAndWait(func() {
-		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
+		err := backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
 		s.EqualError(err, "rpc error: code = NotFound desc = Subscription does not exist (resource=hedwig-does-not-exist)")
 	})
 
@@ -278,8 +281,10 @@ func (s *BackendTestSuite) TestRequeueDLQReceiveError() {
 	s.settings.QueueName = "does-not-exist"
 	s.settings.Subscriptions = nil
 
+	backend := gcp.NewBackend(s.settings, nil)
+
 	testutils.RunAndWait(func() {
-		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
+		err := backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
 		s.EqualError(err, "rpc error: code = NotFound desc = Subscription does not exist (resource=hedwig-does-not-exist-dlq)")
 	})
 
@@ -398,7 +403,7 @@ type BackendTestSuite struct {
 	backend              *gcp.Backend
 	client               *pubsub.Client
 	otherProjectClient   *pubsub.Client
-	settings             *gcp.Settings
+	settings             gcp.Settings
 	message              *hedwig.Message
 	payload              []byte
 	attributes           map[string]string
@@ -519,7 +524,7 @@ func (s *BackendTestSuite) TearDownSuite() {
 func (s *BackendTestSuite) SetupTest() {
 	logger := &fakeLogger{}
 
-	settings := &gcp.Settings{
+	settings := gcp.Settings{
 		GoogleCloudProject: "emulator-project",
 		QueueName:          "dev-myapp",
 		Subscriptions:      []string{"dev-user-created-v1"},

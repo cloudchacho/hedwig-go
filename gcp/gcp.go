@@ -18,7 +18,7 @@ import (
 
 type Backend struct {
 	client    *pubsub.Client
-	settings  *Settings
+	settings  Settings
 	getLogger hedwig.GetLoggerFunc
 }
 
@@ -290,7 +290,7 @@ func (b *Backend) initDefaults() {
 
 // NewBackend creates a Backend for publishing and consuming from GCP
 // The provider metadata produced by this Backend will have concrete type: gcp.Metadata
-func NewBackend(settings *Settings, getLogger hedwig.GetLoggerFunc) *Backend {
+func NewBackend(settings Settings, getLogger hedwig.GetLoggerFunc) *Backend {
 	b := &Backend{settings: settings, getLogger: getLogger}
 	b.initDefaults()
 	return b

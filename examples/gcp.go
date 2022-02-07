@@ -11,8 +11,8 @@ const (
 	gcpQueueName = "dev-myapp"
 )
 
-func gcpBackendSettings() *gcp.Settings {
-	return &gcp.Settings{
+func gcpBackendSettings() gcp.Settings {
+	return gcp.Settings{
 		GoogleCloudProject: os.Getenv("GOOGLE_CLOUD_PROJECT"),
 		QueueName:          gcpQueueName,
 		Subscriptions:      []string{"dev-user-created-v1"},

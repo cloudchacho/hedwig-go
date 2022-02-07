@@ -309,7 +309,7 @@ func (s *ConsumerTestSuite) TestListenForMessages() {
 	s.backend.AssertExpectations(s.T())
 }
 func (s *ConsumerTestSuite) TestUseTransportMessageAttributes() {
-	s.deserializer.On("WithUseTransportMessageAttributes", false).
+	s.deserializer.On("withUseTransportMessageAttributes", false).
 		Return(s.deserializer, nil)
 	s.consumer.WithUseTransportMessageAttributes(false)
 	s.deserializer.AssertExpectations(s.T())

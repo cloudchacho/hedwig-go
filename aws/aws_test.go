@@ -1329,7 +1329,7 @@ func (s *BackendTestSuite) TestNew() {
 type BackendTestSuite struct {
 	suite.Suite
 	backend              *Backend
-	settings             *Settings
+	settings             Settings
 	fakeSQS              *fakeSQS
 	fakeSNS              *fakeSNS
 	message              *hedwig.Message
@@ -1342,9 +1342,10 @@ type BackendTestSuite struct {
 
 func (s *BackendTestSuite) SetupTest() {
 	logger := &fakeLogger{}
-	settings := &Settings{
+	settings := Settings{
 		AWSRegion:    "us-east-1",
 		AWSAccountID: "1234567890",
+		QueueName:    "DEV-MYAPP",
 	}
 	getLogger := func(_ context.Context) hedwig.Logger {
 		return logger
@@ -1360,7 +1361,7 @@ func (s *BackendTestSuite) SetupTest() {
 	payload := []byte(`{"vehicle_id": "C_123"}`)
 	attributes := map[string]string{"foo": "bar"}
 
-	s.backend = NewBackend("DEV-MYAPP", settings, NewAWSSessionsCache(), getLogger)
+	s.backend = NewBackend(settings, getLogger)
 	s.backend.sqs = fakeSQS
 	s.backend.sns = fakeSNS
 	s.settings = settings
