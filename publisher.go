@@ -50,7 +50,7 @@ type serializer interface {
 	withUseTransportMessageAttributes(useTransportMessageAttributes bool)
 }
 
-func (p *Publisher) withUseTransportMessageAttributes(useTransportMessageAttributes bool) {
+func (p *Publisher) WithUseTransportMessageAttributes(useTransportMessageAttributes bool) {
 	p.serializer.withUseTransportMessageAttributes(useTransportMessageAttributes)
 }
 

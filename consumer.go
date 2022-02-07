@@ -106,6 +106,17 @@ func (c *QueueConsumer) WithInstrumenter(instrumenter Instrumenter) *QueueConsum
 	return c
 }
 
+func (c *QueueConsumer) WithUseTransportMessageAttributes(useTransportMessageAttributes bool) {
+	c.deserializer.withUseTransportMessageAttributes(useTransportMessageAttributes)
+}
+
+func (c *QueueConsumer) initDefaults() {
+	if c.getLogger == nil {
+		stdLogger := &StdLogger{}
+		c.getLogger = func(_ context.Context) Logger { return stdLogger }
+	}
+}
+
 func wrapCallback(function CallbackFunction) CallbackFunction {
 	return func(ctx context.Context, message *Message) (err error) {
 		defer func() {
@@ -125,17 +136,6 @@ func wrapCallback(function CallbackFunction) CallbackFunction {
 type deserializer interface {
 	deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}) (*Message, error)
 	withUseTransportMessageAttributes(useTransportMessageAttributes bool)
-}
-
-func (v *QueueConsumer) withUseTransportMessageAttributes(useTransportMessageAttributes bool) {
-	v.deserializer.withUseTransportMessageAttributes(useTransportMessageAttributes)
-}
-
-func (v *QueueConsumer) initDefaults() {
-	if v.getLogger == nil {
-		stdLogger := &StdLogger{}
-		v.getLogger = func(_ context.Context) Logger { return stdLogger }
-	}
 }
 
 func NewQueueConsumer(backend ConsumerBackend, decoder Decoder, getLogger GetLoggerFunc, registry CallbackRegistry) *QueueConsumer {

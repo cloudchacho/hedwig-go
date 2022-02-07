@@ -119,9 +119,9 @@ func (s *PublisherTestSuite) TestPublishSendsTraceID() {
 }
 
 func (s *PublisherTestSuite) TestUseTransportMessageAttributes() {
-	s.serializer.On("withUseTransportMessageAttributes", false).
+	s.serializer.On("WithUseTransportMessageAttributes", false).
 		Return(s.serializer, nil)
-	s.publisher.withUseTransportMessageAttributes(false)
+	s.publisher.WithUseTransportMessageAttributes(false)
 	s.serializer.AssertExpectations(s.T())
 }
 
