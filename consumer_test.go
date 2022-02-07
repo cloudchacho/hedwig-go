@@ -308,6 +308,12 @@ func (s *ConsumerTestSuite) TestListenForMessages() {
 	assert.EqualError(s.T(), err, "context canceled")
 	s.backend.AssertExpectations(s.T())
 }
+func (s *ConsumerTestSuite) TestUseTransportMessageAttributes() {
+	s.deserializer.On("withUseTransportMessageAttributes", false).
+		Return(s.deserializer, nil)
+	s.consumer.withUseTransportMessageAttributes(false)
+	s.deserializer.AssertExpectations(s.T())
+}
 
 func (s *ConsumerTestSuite) TestNew() {
 	assert.NotNil(s.T(), s.consumer)
