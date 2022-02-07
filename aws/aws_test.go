@@ -138,7 +138,9 @@ func (fs *fakeSNS) PublishWithContext(ctx aws.Context, in *sns.PublishInput, opt
 }
 
 func (s *BackendTestSuite) TestReceive() {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+	defer cancel()
+
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
@@ -203,7 +205,10 @@ func (s *BackendTestSuite) TestReceive() {
 		Return(receiveOutput, nil).
 		Once()
 	s.fakeSQS.On("ReceiveMessageWithContext", mock.AnythingOfType("*context.timerCtx"), receiveInput, []request.Option(nil)).
-		Return(&sqs.ReceiveMessageOutput{}, nil)
+		Return(&sqs.ReceiveMessageOutput{}, nil).
+		Run(func(_ mock.Arguments) {
+			cancel()
+		})
 
 	payload := []byte(`{"vehicle_id": "C_123"}`)
 	attributes := map[string]string{
@@ -227,12 +232,9 @@ func (s *BackendTestSuite) TestReceive() {
 		Return().
 		Once()
 
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*1)
-	defer cancel()
-
 	testutils.RunAndWait(func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
-		s.EqualError(err, "context deadline exceeded")
+		s.EqualError(err, "context canceled")
 	})
 
 	s.fakeSQS.AssertExpectations(s.T())
@@ -240,7 +242,9 @@ func (s *BackendTestSuite) TestReceive() {
 }
 
 func (s *BackendTestSuite) TestReceiveFailedNonUTF8Decoding() {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+	defer cancel()
+
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
@@ -284,14 +288,14 @@ func (s *BackendTestSuite) TestReceiveFailedNonUTF8Decoding() {
 		Return(receiveOutput, nil).
 		Once()
 	s.fakeSQS.On("ReceiveMessageWithContext", mock.AnythingOfType("*context.timerCtx"), receiveInput, []request.Option(nil)).
-		Return(&sqs.ReceiveMessageOutput{}, nil)
-
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*1)
-	defer cancel()
+		Return(&sqs.ReceiveMessageOutput{}, nil).
+		Run(func(_ mock.Arguments) {
+			cancel()
+		})
 
 	testutils.RunAndWait(func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
-		s.EqualError(err, "context deadline exceeded")
+		s.EqualError(err, "context canceled")
 	})
 
 	s.fakeSQS.AssertExpectations(s.T())
@@ -302,7 +306,9 @@ func (s *BackendTestSuite) TestReceiveFailedNonUTF8Decoding() {
 }
 
 func (s *BackendTestSuite) TestReceiveNoMessages() {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+	defer cancel()
+
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
@@ -324,14 +330,14 @@ func (s *BackendTestSuite) TestReceiveNoMessages() {
 		WaitTimeSeconds:       aws.Int64(sqsWaitTimeoutSeconds),
 	}
 	s.fakeSQS.On("ReceiveMessageWithContext", mock.AnythingOfType("*context.timerCtx"), receiveInput, []request.Option(nil)).
-		Return(&sqs.ReceiveMessageOutput{}, nil)
-
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*1)
-	defer cancel()
+		Return(&sqs.ReceiveMessageOutput{}, nil).
+		Run(func(_ mock.Arguments) {
+			cancel()
+		})
 
 	testutils.RunAndWait(func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
-		s.EqualError(err, "context deadline exceeded")
+		s.EqualError(err, "context canceled")
 	})
 
 	s.fakeSQS.AssertExpectations(s.T())
@@ -339,7 +345,8 @@ func (s *BackendTestSuite) TestReceiveNoMessages() {
 }
 
 func (s *BackendTestSuite) TestReceiveError() {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+	defer cancel()
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
@@ -361,10 +368,10 @@ func (s *BackendTestSuite) TestReceiveError() {
 		WaitTimeSeconds:       aws.Int64(sqsWaitTimeoutSeconds),
 	}
 	s.fakeSQS.On("ReceiveMessageWithContext", mock.AnythingOfType("*context.timerCtx"), receiveInput, []request.Option(nil)).
-		Return(&sqs.ReceiveMessageOutput{}, errors.New("no internet"))
-
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*1)
-	defer cancel()
+		Return(&sqs.ReceiveMessageOutput{}, errors.New("no internet")).
+		Run(func(_ mock.Arguments) {
+			cancel()
+		})
 
 	testutils.RunAndWait(func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
@@ -394,7 +401,8 @@ func (s *BackendTestSuite) TestReceiveGetQueueError() {
 }
 
 func (s *BackendTestSuite) TestReceiveMissingAttributes() {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+	defer cancel()
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
@@ -438,7 +446,10 @@ func (s *BackendTestSuite) TestReceiveMissingAttributes() {
 		Return(receiveOutput, nil).
 		Once()
 	s.fakeSQS.On("ReceiveMessageWithContext", mock.AnythingOfType("*context.timerCtx"), receiveInput, []request.Option(nil)).
-		Return(&sqs.ReceiveMessageOutput{}, nil)
+		Return(&sqs.ReceiveMessageOutput{}, nil).
+		Run(func(_ mock.Arguments) {
+			cancel()
+		})
 
 	payload := []byte(`{"vehicle_id": "C_123"}`)
 	attributes := map[string]string{
@@ -454,11 +465,9 @@ func (s *BackendTestSuite) TestReceiveMissingAttributes() {
 		Return().
 		Once()
 
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*10)
-	defer cancel()
 	testutils.RunAndWait(func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
-		s.EqualError(err, "context deadline exceeded")
+		s.EqualError(err, "context canceled")
 	})
 
 	s.fakeSQS.AssertExpectations(s.T())
@@ -466,7 +475,8 @@ func (s *BackendTestSuite) TestReceiveMissingAttributes() {
 }
 
 func (s *BackendTestSuite) TestRequeueDLQ() {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+	defer cancel()
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 
@@ -594,21 +604,22 @@ func (s *BackendTestSuite) TestRequeueDLQ() {
 
 	s.fakeSQS.On("DeleteMessageBatchWithContext", mock.AnythingOfType("*context.timerCtx"), deleteInput, []request.Option(nil)).
 		Return(deleteOutput, nil).
-		Once()
-
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*1)
-	defer cancel()
+		Once().
+		Run(func(_ mock.Arguments) {
+			cancel()
+		})
 
 	testutils.RunAndWait(func() {
 		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
-		s.EqualError(err, "context deadline exceeded")
+		s.EqualError(err, "context canceled")
 	})
 
 	s.fakeSQS.AssertExpectations(s.T())
 }
 
 func (s *BackendTestSuite) TestRequeueDLQNoMessages() {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+	defer cancel()
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
@@ -644,10 +655,10 @@ func (s *BackendTestSuite) TestRequeueDLQNoMessages() {
 		WaitTimeSeconds:       aws.Int64(sqsWaitTimeoutSeconds),
 	}
 	s.fakeSQS.On("ReceiveMessageWithContext", mock.AnythingOfType("*context.timerCtx"), receiveInput, []request.Option(nil)).
-		Return(&sqs.ReceiveMessageOutput{}, nil)
-
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*1)
-	defer cancel()
+		Return(&sqs.ReceiveMessageOutput{}, nil).
+		Run(func(_ mock.Arguments) {
+			cancel()
+		})
 
 	testutils.RunAndWait(func() {
 		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
@@ -659,7 +670,8 @@ func (s *BackendTestSuite) TestRequeueDLQNoMessages() {
 }
 
 func (s *BackendTestSuite) TestRequeueDLQReceiveError() {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+	defer cancel()
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
@@ -693,10 +705,10 @@ func (s *BackendTestSuite) TestRequeueDLQReceiveError() {
 		WaitTimeSeconds:       aws.Int64(sqsWaitTimeoutSeconds),
 	}
 	s.fakeSQS.On("ReceiveMessageWithContext", mock.AnythingOfType("*context.timerCtx"), receiveInput, []request.Option(nil)).
-		Return(&sqs.ReceiveMessageOutput{}, errors.New("no internet"))
-
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*1)
-	defer cancel()
+		Return(&sqs.ReceiveMessageOutput{}, errors.New("no internet")).
+		Run(func(_ mock.Arguments) {
+			cancel()
+		})
 
 	testutils.RunAndWait(func() {
 		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
@@ -708,7 +720,8 @@ func (s *BackendTestSuite) TestRequeueDLQReceiveError() {
 }
 
 func (s *BackendTestSuite) TestRequeueDLQPublishError() {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+	defer cancel()
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
@@ -778,10 +791,10 @@ func (s *BackendTestSuite) TestRequeueDLQPublishError() {
 		QueueUrl: aws.String(queueURL),
 	}
 	s.fakeSQS.On("SendMessageBatchWithContext", mock.AnythingOfType("*context.timerCtx"), sendInput, mock.Anything).
-		Return((*sqs.SendMessageBatchOutput)(nil), errors.New("no internet"))
-
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*1)
-	defer cancel()
+		Return((*sqs.SendMessageBatchOutput)(nil), errors.New("no internet")).
+		Run(func(_ mock.Arguments) {
+			cancel()
+		})
 
 	testutils.RunAndWait(func() {
 		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
@@ -793,7 +806,8 @@ func (s *BackendTestSuite) TestRequeueDLQPublishError() {
 }
 
 func (s *BackendTestSuite) TestRequeueDLQPublishPartialError() {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+	defer cancel()
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
@@ -869,10 +883,10 @@ func (s *BackendTestSuite) TestRequeueDLQPublishPartialError() {
 		Successful: []*sqs.SendMessageBatchResultEntry{},
 	}
 	s.fakeSQS.On("SendMessageBatchWithContext", mock.AnythingOfType("*context.timerCtx"), sendInput, mock.Anything).
-		Return(sendOutput, nil)
-
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*1)
-	defer cancel()
+		Return(sendOutput, nil).
+		Run(func(_ mock.Arguments) {
+			cancel()
+		})
 
 	testutils.RunAndWait(func() {
 		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
@@ -884,7 +898,8 @@ func (s *BackendTestSuite) TestRequeueDLQPublishPartialError() {
 }
 
 func (s *BackendTestSuite) TestRequeueDLQDeleteError() {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+	defer cancel()
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
@@ -975,10 +990,10 @@ func (s *BackendTestSuite) TestRequeueDLQDeleteError() {
 
 	s.fakeSQS.On("DeleteMessageBatchWithContext", mock.AnythingOfType("*context.timerCtx"), deleteInput, []request.Option(nil)).
 		Return((*sqs.DeleteMessageBatchOutput)(nil), errors.New("no internet")).
-		Once()
-
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*1)
-	defer cancel()
+		Once().
+		Run(func(_ mock.Arguments) {
+			cancel()
+		})
 
 	testutils.RunAndWait(func() {
 		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
@@ -990,7 +1005,8 @@ func (s *BackendTestSuite) TestRequeueDLQDeleteError() {
 }
 
 func (s *BackendTestSuite) TestRequeueDLQDeletePartialError() {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+	defer cancel()
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
@@ -1087,10 +1103,10 @@ func (s *BackendTestSuite) TestRequeueDLQDeletePartialError() {
 
 	s.fakeSQS.On("DeleteMessageBatchWithContext", mock.AnythingOfType("*context.timerCtx"), deleteInput, []request.Option(nil)).
 		Return(deleteOutput, nil).
-		Once()
-
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*1)
-	defer cancel()
+		Once().
+		Run(func(_ mock.Arguments) {
+			cancel()
+		})
 
 	testutils.RunAndWait(func() {
 		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
