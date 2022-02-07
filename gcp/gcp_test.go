@@ -15,8 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/api/iterator"
-	"google.golang.org/api/option"
-	"google.golang.org/grpc"
 
 	"github.com/cloudchacho/hedwig-go"
 	"github.com/cloudchacho/hedwig-go/gcp"
@@ -85,9 +83,12 @@ func (f *fakeValidator) Deserialize(messagePayload []byte, attributes map[string
 	return args.Get(0).(*hedwig.Message), args.Error(1)
 }
 
-func (s *BackendTestSuite) publish(payload []byte, attributes map[string]string, topic string) error {
+func (s *BackendTestSuite) publish(payload []byte, attributes map[string]string, topic, project string) error {
+	if project == "" {
+		project = s.settings.GoogleCloudProject
+	}
 	ctx := context.Background()
-	_, err := s.client.Topic(topic).Publish(ctx, &pubsub.Message{
+	_, err := s.client.TopicInProject(topic, project).Publish(ctx, &pubsub.Message{
 		Data:       payload,
 		Attributes: attributes,
 	}).Get(ctx)
@@ -95,7 +96,8 @@ func (s *BackendTestSuite) publish(payload []byte, attributes map[string]string,
 }
 
 func (s *BackendTestSuite) TestReceive() {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*200)
+	defer cancel()
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 
@@ -103,14 +105,14 @@ func (s *BackendTestSuite) TestReceive() {
 	attributes := map[string]string{
 		"foo": "bar",
 	}
-	err := s.publish(payload, attributes, "hedwig-dev-user-created-v1")
+	err := s.publish(payload, attributes, "hedwig-dev-user-created-v1", "")
 	s.Require().NoError(err)
 
 	payload2 := []byte("\xbd\xb2\x3d\xbc\x20\xe2\x8c\x98")
 	attributes2 := map[string]string{
 		"foo": "bar",
 	}
-	err = s.publish(payload2, attributes2, "hedwig-dev-user-created-v1")
+	err = s.publish(payload2, attributes2, "hedwig-dev-user-created-v1", "")
 	s.Require().NoError(err)
 
 	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload, attributes, mock.AnythingOfType("gcp.Metadata")).
@@ -126,17 +128,15 @@ func (s *BackendTestSuite) TestReceive() {
 		Run(func(args mock.Arguments) {
 			err := s.backend.AckMessage(ctx, args.Get(3))
 			s.Require().NoError(err)
+			cancel()
 		}).
 		Return().
 		Once().
-		// force method to return after just one loop
-		After(time.Millisecond * 110)
+		After(time.Millisecond * 50)
 
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*200)
-	defer cancel()
 	testutils.RunAndWait(func() {
 		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
-		s.True(err.Error() == "draining" || err == context.DeadlineExceeded)
+		s.True(err.Error() == "draining" || err == context.Canceled)
 	})
 
 	if s.fakeConsumerCallback.AssertExpectations(s.T()) {
@@ -146,34 +146,35 @@ func (s *BackendTestSuite) TestReceive() {
 }
 
 func (s *BackendTestSuite) TestReceiveCrossProject() {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
+	defer cancel()
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 
-	s.settings.SubscriptionsCrossProject = []hedwig.SubscriptionProject{{"dev-user-created-v1", "other-project"}}
+	s.settings.SubscriptionsCrossProject = []gcp.SubscriptionProject{{"dev-user-created-v1", "other-project"}}
 	s.settings.Subscriptions = []string{}
+	backend := gcp.NewBackend(s.settings, nil)
 
 	payload := []byte(`{"vehicle_id": "C_123"}`)
 	attributes := map[string]string{
 		"foo": "bar",
 	}
-	err := s.publish(payload, attributes, "hedwig-dev-user-created-v1")
+	err := s.publish(payload, attributes, "hedwig-dev-user-created-v1", "other-project")
 	s.Require().NoError(err)
 
 	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload, attributes, mock.AnythingOfType("gcp.Metadata")).
 		// message must be acked or Receive never returns
 		Run(func(args mock.Arguments) {
-			err := s.backend.AckMessage(ctx, args.Get(3))
+			err := backend.AckMessage(ctx, args.Get(3))
 			s.Require().NoError(err)
+			cancel()
 		}).
 		Return().
 		Once()
 
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*500)
-	defer cancel()
 	testutils.RunAndWait(func() {
-		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
-		s.True(err.Error() == "draining" || err == context.DeadlineExceeded)
+		err := backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
+		s.True(err.Error() == "draining" || err == context.Canceled)
 	})
 
 	s.fakeConsumerCallback.AssertExpectations(s.T())
@@ -204,8 +205,10 @@ func (s *BackendTestSuite) TestReceiveError() {
 	s.settings.QueueName = "does-not-exist"
 	s.settings.Subscriptions = nil
 
+	backend := gcp.NewBackend(s.settings, nil)
+
 	testutils.RunAndWait(func() {
-		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
+		err := backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
 		s.EqualError(err, "rpc error: code = NotFound desc = Subscription does not exist (resource=hedwig-does-not-exist)")
 	})
 
@@ -221,14 +224,14 @@ func (s *BackendTestSuite) TestRequeueDLQ() {
 	attributes := map[string]string{
 		"foo": "bar",
 	}
-	err := s.publish(payload, attributes, "hedwig-dev-myapp-dlq")
+	err := s.publish(payload, attributes, "hedwig-dev-myapp-dlq", "")
 	s.Require().NoError(err)
 
 	payload2 := []byte("\xbd\xb2\x3d\xbc\x20\xe2\x8c\x98")
 	attributes2 := map[string]string{
 		"foo": "bar",
 	}
-	err = s.publish(payload2, attributes2, "hedwig-dev-myapp-dlq")
+	err = s.publish(payload2, attributes2, "hedwig-dev-myapp-dlq", "")
 	s.Require().NoError(err)
 
 	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*200)
@@ -262,11 +265,11 @@ func (s *BackendTestSuite) TestRequeueDLQNoMessages() {
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
 	defer cancel()
 	testutils.RunAndWait(func() {
 		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
-		s.NoError(err)
+		s.True(err == context.DeadlineExceeded)
 	})
 }
 
@@ -278,8 +281,10 @@ func (s *BackendTestSuite) TestRequeueDLQReceiveError() {
 	s.settings.QueueName = "does-not-exist"
 	s.settings.Subscriptions = nil
 
+	backend := gcp.NewBackend(s.settings, nil)
+
 	testutils.RunAndWait(func() {
-		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
+		err := backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
 		s.EqualError(err, "rpc error: code = NotFound desc = Subscription does not exist (resource=hedwig-does-not-exist-dlq)")
 	})
 
@@ -295,7 +300,7 @@ func (s *BackendTestSuite) TestRequeueDLQPublishError() {
 	attributes := map[string]string{
 		"foo": "bar",
 	}
-	err := s.publish(payload, attributes, "hedwig-dev-myapp-dlq")
+	err := s.publish(payload, attributes, "hedwig-dev-myapp-dlq", "")
 	s.Require().NoError(err)
 
 	topic := s.client.Topic("hedwig-dev-myapp")
@@ -395,9 +400,10 @@ func (s *BackendTestSuite) TestNew() {
 
 type BackendTestSuite struct {
 	suite.Suite
-	backend              hedwig.IBackend
+	backend              *gcp.Backend
 	client               *pubsub.Client
-	settings             *hedwig.Settings
+	otherProjectClient   *pubsub.Client
+	settings             gcp.Settings
 	message              *hedwig.Message
 	payload              []byte
 	attributes           map[string]string
@@ -412,6 +418,11 @@ func (s *BackendTestSuite) SetupSuite() {
 		client, err := pubsub.NewClient(ctx, "emulator-project")
 		s.Require().NoError(err)
 		s.client = client
+	}
+	if s.otherProjectClient == nil {
+		client, err := pubsub.NewClient(ctx, "other-project")
+		s.Require().NoError(err)
+		s.otherProjectClient = client
 	}
 	dlqTopic, err := s.client.CreateTopic(ctx, "hedwig-dev-myapp-dlq")
 	s.Require().NoError(err)
@@ -430,6 +441,8 @@ func (s *BackendTestSuite) SetupSuite() {
 			MaxDeliveryAttempts: 5,
 		},
 	})
+	s.Require().NoError(err)
+	topic, err = s.otherProjectClient.CreateTopic(ctx, "hedwig-dev-user-created-v1")
 	s.Require().NoError(err)
 	_, err = s.client.CreateSubscription(ctx, "hedwig-dev-myapp-other-project-dev-user-created-v1", pubsub.SubscriptionConfig{
 		Topic:       topic,
@@ -456,18 +469,22 @@ func (s *BackendTestSuite) SetupSuite() {
 func (s *BackendTestSuite) TearDownSuite() {
 	ctx := context.Background()
 	if s.client == nil {
-		client, err := pubsub.NewClient(
-			ctx,
-			"emulator-project",
-			option.WithoutAuthentication(),
-			option.WithGRPCDialOption(grpc.WithInsecure()),
-		)
+		client, err := pubsub.NewClient(ctx, "emulator-project")
 		s.Require().NoError(err)
 		s.client = client
+	}
+	if s.otherProjectClient == nil {
+		client, err := pubsub.NewClient(ctx, "other-project")
+		s.Require().NoError(err)
+		s.otherProjectClient = client
 	}
 	defer func() {
 		s.Require().NoError(s.client.Close())
 		s.client = nil
+	}()
+	defer func() {
+		s.Require().NoError(s.otherProjectClient.Close())
+		s.otherProjectClient = nil
 	}()
 	subscriptions := s.client.Subscriptions(ctx)
 	for {
@@ -491,26 +508,32 @@ func (s *BackendTestSuite) TearDownSuite() {
 			s.Require().NoError(err)
 		}
 	}
+	topics = s.otherProjectClient.Topics(ctx)
+	for {
+		if topic, err := topics.Next(); err == iterator.Done {
+			break
+		} else if err != nil {
+			panic(fmt.Sprintf("failed to delete topics with error: %v", err))
+		} else {
+			err = topic.Delete(ctx)
+			s.Require().NoError(err)
+		}
+	}
 }
 
 func (s *BackendTestSuite) SetupTest() {
 	logger := &fakeLogger{}
 
-	settings := &hedwig.Settings{
+	settings := gcp.Settings{
 		GoogleCloudProject: "emulator-project",
 		QueueName:          "dev-myapp",
-		MessageRouting: map[hedwig.MessageTypeMajorVersion]string{
-			{
-				MessageType:  "user-created",
-				MajorVersion: 1,
-			}: "dev-user-created-v1",
-		},
-		Subscriptions:   []string{"dev-user-created-v1"},
-		ShutdownTimeout: time.Second * 10,
-		GetLogger:       func(_ context.Context) hedwig.ILogger { return logger },
+		Subscriptions:      []string{"dev-user-created-v1"},
+	}
+	getLogger := func(_ context.Context) hedwig.Logger {
+		return logger
 	}
 	fakeMessageCallback := &fakeConsumerCallback{}
-	message, err := hedwig.NewMessage(settings, "user-created", "1.0", map[string]string{"foo": "bar"}, &fakeHedwigDataField{})
+	message, err := hedwig.NewMessage("user-created", "1.0", map[string]string{"foo": "bar"}, &fakeHedwigDataField{}, "myapp")
 	require.NoError(s.T(), err)
 
 	validator := &fakeValidator{}
@@ -518,7 +541,7 @@ func (s *BackendTestSuite) SetupTest() {
 	payload := []byte(`{"vehicle_id": "C_123"}`)
 	attributes := map[string]string{"foo": "bar"}
 
-	s.backend = gcp.NewBackend(settings)
+	s.backend = gcp.NewBackend(settings, getLogger)
 	s.settings = settings
 	s.message = message
 	s.validator = validator

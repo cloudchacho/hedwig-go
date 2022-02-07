@@ -11,14 +11,19 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2/google"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/api/option"
 
 	"github.com/cloudchacho/hedwig-go"
 )
 
-type backend struct {
-	settings *hedwig.Settings
-	client   *pubsub.Client
+type Backend struct {
+	client    *pubsub.Client
+	settings  Settings
+	getLogger hedwig.GetLoggerFunc
 }
+
+var _ = hedwig.ConsumerBackend(&Backend{})
+var _ = hedwig.PublisherBackend(&Backend{})
 
 const defaultVisibilityTimeoutS = time.Second * 20
 
@@ -37,13 +42,13 @@ type Metadata struct {
 }
 
 // Publish a message represented by the payload, with specified attributes to the specific topic
-func (g *backend) Publish(ctx context.Context, message *hedwig.Message, payload []byte, attributes map[string]string, topic string) (string, error) {
-	err := g.ensureClient(ctx)
+func (b *Backend) Publish(ctx context.Context, message *hedwig.Message, payload []byte, attributes map[string]string, topic string) (string, error) {
+	err := b.ensureClient(ctx)
 	if err != nil {
 		return "", err
 	}
 
-	clientTopic := g.client.Topic(fmt.Sprintf("hedwig-%s", topic))
+	clientTopic := b.client.Topic(fmt.Sprintf("hedwig-%s", topic))
 	defer clientTopic.Stop()
 
 	result := clientTopic.Publish(
@@ -62,32 +67,32 @@ func (g *backend) Publish(ctx context.Context, message *hedwig.Message, payload 
 
 // Receive messages from configured queue(s) and provide it through the callback. This should run indefinitely
 // until the context is canceled. Provider metadata should include all info necessary to ack/nack a message.
-func (g *backend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback hedwig.ConsumerCallback) error {
-	err := g.ensureClient(ctx)
+func (b *Backend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback hedwig.ConsumerCallback) error {
+	err := b.ensureClient(ctx)
 	if err != nil {
 		return err
 	}
 
-	defer g.client.Close()
+	defer b.client.Close()
 
 	subscriptions := []string{}
 	// all subscriptions live in an app's project, but cross-project subscriptions are named differently
-	for _, subscription := range g.settings.SubscriptionsCrossProject {
-		subscriptionName := fmt.Sprintf("hedwig-%s-%s-%s", g.settings.QueueName, subscription.ProjectID, subscription.Subscription)
+	for _, subscription := range b.settings.SubscriptionsCrossProject {
+		subscriptionName := fmt.Sprintf("hedwig-%s-%s-%s", b.settings.QueueName, subscription.ProjectID, subscription.Subscription)
 		subscriptions = append(subscriptions, subscriptionName)
 	}
-	for _, subscription := range g.settings.Subscriptions {
-		subscriptionName := fmt.Sprintf("hedwig-%s-%s", g.settings.QueueName, subscription)
+	for _, subscription := range b.settings.Subscriptions {
+		subscriptionName := fmt.Sprintf("hedwig-%s-%s", b.settings.QueueName, subscription)
 		subscriptions = append(subscriptions, subscriptionName)
 	}
 	// main queue for DLQ re-queued messages
-	subscriptionName := fmt.Sprintf("hedwig-%s", g.settings.QueueName)
+	subscriptionName := fmt.Sprintf("hedwig-%s", b.settings.QueueName)
 	subscriptions = append(subscriptions, subscriptionName)
 
 	group, gctx := errgroup.WithContext(ctx)
 
 	for _, subscription := range subscriptions {
-		pubsubSubscription := g.client.Subscription(subscription)
+		pubsubSubscription := b.client.Subscription(subscription)
 		pubsubSubscription.ReceiveSettings.NumGoroutines = 1
 		pubsubSubscription.ReceiveSettings.MaxOutstandingMessages = int(numMessages)
 		if visibilityTimeout != 0 {
@@ -117,15 +122,15 @@ func (g *backend) Receive(ctx context.Context, numMessages uint32, visibilityTim
 }
 
 // RequeueDLQ re-queues everything in the Hedwig DLQ back into the Hedwig queue
-func (g *backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration) error {
-	err := g.ensureClient(ctx)
+func (b *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration) error {
+	err := b.ensureClient(ctx)
 	if err != nil {
 		return err
 	}
 
-	defer g.client.Close()
+	defer b.client.Close()
 
-	clientTopic := g.client.Topic(fmt.Sprintf("hedwig-%s", g.settings.QueueName))
+	clientTopic := b.client.Topic(fmt.Sprintf("hedwig-%s", b.settings.QueueName))
 	defer clientTopic.Stop()
 
 	clientTopic.PublishSettings.CountThreshold = int(numMessages)
@@ -135,7 +140,7 @@ func (g *backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 		clientTopic.PublishSettings.Timeout = defaultVisibilityTimeoutS
 	}
 
-	pubsubSubscription := g.client.Subscription(fmt.Sprintf("hedwig-%s-dlq", g.settings.QueueName))
+	pubsubSubscription := b.client.Subscription(fmt.Sprintf("hedwig-%s-dlq", b.settings.QueueName))
 	pubsubSubscription.ReceiveSettings.MaxOutstandingMessages = int(numMessages)
 	pubsubSubscription.ReceiveSettings.MaxExtensionPeriod = clientTopic.PublishSettings.Timeout
 
@@ -171,7 +176,7 @@ func (g *backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 		for {
 			select {
 			case <-progressTicker.C:
-				g.settings.GetLogger(ctx).Info("Re-queue DLQ progress", hedwig.LoggingFields{"num_messages": atomic.LoadUint32(&numMessagesRequeued)})
+				b.getLogger(ctx).Info("Re-queue DLQ progress", hedwig.LoggingFields{"num_messages": atomic.LoadUint32(&numMessagesRequeued)})
 			case <-rctx.Done():
 				return
 			}
@@ -208,19 +213,19 @@ func (g *backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 }
 
 // NackMessage nacks a message on the queue
-func (g *backend) NackMessage(ctx context.Context, providerMetadata interface{}) error {
+func (b *Backend) NackMessage(ctx context.Context, providerMetadata interface{}) error {
 	providerMetadata.(Metadata).pubsubMessage.Nack()
 	return nil
 }
 
 // AckMessage acknowledges a message on the queue
-func (g *backend) AckMessage(ctx context.Context, providerMetadata interface{}) error {
+func (b *Backend) AckMessage(ctx context.Context, providerMetadata interface{}) error {
 	providerMetadata.(Metadata).pubsubMessage.Ack()
 	return nil
 }
 
-func (g *backend) ensureClient(ctx context.Context) error {
-	googleCloudProject := g.settings.GoogleCloudProject
+func (b *Backend) ensureClient(ctx context.Context) error {
+	googleCloudProject := b.settings.GoogleCloudProject
 	if googleCloudProject == "" {
 		creds, err := google.FindDefaultCredentials(ctx)
 		if err != nil {
@@ -232,19 +237,61 @@ func (g *backend) ensureClient(ctx context.Context) error {
 		}
 		googleCloudProject = creds.ProjectID
 	}
-	if g.client != nil {
+	if b.client != nil {
 		return nil
 	}
-	client, err := pubsub.NewClient(context.Background(), googleCloudProject, g.settings.PubsubClientOptions...)
+	client, err := pubsub.NewClient(context.Background(), googleCloudProject, b.settings.PubsubClientOptions...)
 	if err != nil {
 		return err
 	}
-	g.client = client
+	b.client = client
 	return nil
 }
 
-// NewBackend creates a backend for publishing and consuming from GCP
-// The provider metadata produced by this backend will have concrete type: gcp.Metadata
-func NewBackend(settings *hedwig.Settings) hedwig.IBackend {
-	return &backend{settings: settings}
+// SubscriptionProject represents a tuple of subscription name and project for cross-project Google subscriptions
+type SubscriptionProject struct {
+	// Subscription name
+	Subscription string
+
+	// ProjectID
+	ProjectID string
+}
+
+// Settings for Hedwig
+type Settings struct {
+	// Hedwig queue name. Exclude the `HEDWIG-` prefix
+	QueueName string
+
+	// GoogleCloudProject ID that contains Pub/Sub resources.
+	GoogleCloudProject string
+
+	// PubsubClientOptions is a list of options to pass to pubsub.NewClient. This may be useful to customize GRPC
+	// behavior for example.
+	PubsubClientOptions []option.ClientOption
+
+	// Subscriptions is a list of all the Hedwig topics that the app is subscribed to (exclude the ``hedwig-`` prefix).
+	// For subscribing to cross-project topic messages, use SubscriptionsCrossProject. Google only.
+	Subscriptions []string
+
+	// SubscriptionsCrossProject is a list of tuples of topic name and GCP project for cross-project topic messages.
+	// Google only.
+	SubscriptionsCrossProject []SubscriptionProject
+}
+
+func (b *Backend) initDefaults() {
+	if b.settings.PubsubClientOptions == nil {
+		b.settings.PubsubClientOptions = []option.ClientOption{}
+	}
+	if b.getLogger == nil {
+		stdLogger := &hedwig.StdLogger{}
+		b.getLogger = func(_ context.Context) hedwig.Logger { return stdLogger }
+	}
+}
+
+// NewBackend creates a Backend for publishing and consuming from GCP
+// The provider metadata produced by this Backend will have concrete type: gcp.Metadata
+func NewBackend(settings Settings, getLogger hedwig.GetLoggerFunc) *Backend {
+	b := &Backend{settings: settings, getLogger: getLogger}
+	b.initDefaults()
+	return b
 }

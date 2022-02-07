@@ -34,17 +34,19 @@ func (ac attributesCarrier) Keys() []string {
 	return keys
 }
 
-type instrumenter struct {
+type Instrumenter struct {
 	tp   trace.TracerProvider
 	prop propagation.TextMapPropagator
 }
 
-func (o *instrumenter) OnMessageDeserialized(ctx context.Context, message *hedwig.Message) {
+var _ = hedwig.Instrumenter(&Instrumenter{})
+
+func (o *Instrumenter) OnMessageDeserialized(ctx context.Context, message *hedwig.Message) {
 	currentSpan := trace.SpanFromContext(ctx)
 	currentSpan.SetName(message.Type)
 }
 
-func (o *instrumenter) OnPublish(ctx context.Context, message *hedwig.Message, attributes map[string]string) (context.Context, map[string]string, func()) {
+func (o *Instrumenter) OnPublish(ctx context.Context, message *hedwig.Message, attributes map[string]string) (context.Context, map[string]string, func()) {
 	carrier := attributesCarrier{attributes}
 	o.prop.Inject(ctx, carrier)
 
@@ -54,7 +56,7 @@ func (o *instrumenter) OnPublish(ctx context.Context, message *hedwig.Message, a
 	return ctx, carrier.attributes, func() { span.End() }
 }
 
-func (o *instrumenter) OnReceive(ctx context.Context, attributes map[string]string) (context.Context, func()) {
+func (o *Instrumenter) OnReceive(ctx context.Context, attributes map[string]string) (context.Context, func()) {
 	ctx = o.prop.Extract(ctx, attributesCarrier{attributes})
 
 	name := "message_received"
@@ -63,6 +65,6 @@ func (o *instrumenter) OnReceive(ctx context.Context, attributes map[string]stri
 	return ctx, func() { span.End() }
 }
 
-func NewInstrumenter(tracerProvider trace.TracerProvider, propagator propagation.TextMapPropagator) hedwig.Instrumenter {
-	return &instrumenter{tp: tracerProvider, prop: propagator}
+func NewInstrumenter(tracerProvider trace.TracerProvider, propagator propagation.TextMapPropagator) *Instrumenter {
+	return &Instrumenter{tp: tracerProvider, prop: propagator}
 }

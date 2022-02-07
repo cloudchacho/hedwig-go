@@ -41,113 +41,92 @@ First, install the library:
 go get github.com/cloudchacho/hedwig-go
 ```
 
-Create a JSON-schema and save as ``schema.json``:
+Create a protobuf schema and save as ``schema.proto``:
 
-```json
+```protobuf
+syntax = "proto2";
 
-    {
-        "id": "https://github.com/cloudchacho/hedwig-go/schema#",
-        "$schema": "http://json-schema.org/draft-04/schema",
-        "schemas": {
-            "email.send": {
-                "1.*": {
-                    "description": "Request to send email",
-                    "type": "object",
-                    "required": [
-                        "to",
-                        "subject"
-                    ],
-                    "properties": {
-                        "to": {
-                            "type": "string",
-                            "pattern": "^\\S+@\\S+$"
-                        },
-                        "subject": {
-                            "type": "string",
-                            "minLength": 2
-                        }
-                    }
-                }
-            }
-        }
-    }
+package main;
+
+import "hedwig/protobuf/options.proto";
+
+option go_package = "example.com/hedwig;main";
+
+message SendEmailV1 {
+    option (hedwig.message_options).major_version = 1;
+    option (hedwig.message_options).minor_version = 0;
+    option (hedwig.message_options).message_type = "email.send";
+
+    string to = 1;
+    string message = 1;
+}
 ```
 
-Next, set up a few configuration settings:
-
-```go
-    validator, err := hedwig.NewMessageValidator("schema.json")
-    if err != nil {
-        panic("Failed to create validator")
-    }
-    settings := &hedwig.Settings{
-        AWSAccessKey:              <YOUR AWS KEY>,
-        AWSAccountID:              <YOUR AWS ACCOUNT ID>,
-        AWSRegion:                 <YOUR AWS REGION>,
-        AWSSecretKey:              <YOUR AWS SECRET KEY>,
-        AWSSessionToken:           <YOUR AWS SESSION TOKEN>,
-        CallbackRegistry:          hedwig.NewCallbackRegistry(),
-        Publisher:                 "MYAPP",
-        QueueName:                 "DEV-MYAPP",
-        MessageRouting:            map[hedwig.MessageRouteKey]string{
-            hedwig.MessageRouteKey{
-                MessageType:    "email.send",
-    		        MessageMajorVersion: 1,
-    	      }: "send_email",
-        },
-        Validator:                 validator,
-    }
+Clone hedwig Options definition file and compile your schema:
+```shell
+git clone github.com/cloudchacho/hedwig /usr/local/lib/protobuf/include/hedwig/
+protoc -I/usr/local/lib/protobuf/include -I. --go_out=. schema.proto
 ```
 
-These configuration settings will be passed into the library for initialization.
-
-Next define the models associated with the schemas. These models should have factory
-functions as well.
+In publisher application, initialize the publisher:
 
 ```go
-    type SendEmail struct {
-        Subject string `json:"subject"`
-        To      string `json:"to"`
+    settings := aws.Settings {
+        AWSAccessKey:    <YOUR AWS KEY>,
+        AWSAccountID:    <YOUR AWS ACCOUNT ID>,
+        AWSRegion:       <YOUR AWS REGION>,
+        AWSSecretKey:    <YOUR AWS SECRET KEY>,
+        AWSSessionToken: <YOUR AWS SESSION TOKEN>, 
     }
-
-    // Factory that returns empty struct
-    func NewSendEmailData() interface{} { return new(SendEmail) }
-```
-
-Then, simply define your topic handler and register the handler:
-
-```go
-    // Handler
-    func HandleSendEmail(ctx context.Context, msg *hedwig.Message) error {
-        // Send email
+    backend := aws.NewBackend(settings, nil)
+	encoderDecoder := protobuf.NewMessageEncoderDecoder([]proto.Message{&SendEmailV1{}})
+    routing := map[hedwig.MessageRouteKey]string{
+        {
+            MessageType:    "email.send",
+            MessageMajorVersion: 1,
+        }: "send_email",
     }
-
-    // Register handler
-    cbk := CallbackKey{
-        MessageType:    "email.send",
-        MessageMajorVersion: 1,
-    }
-    settings.CallbackRegistry.RegisterCallback(cbk, HandleSendEmail, NewSendEmailData)
-```
-
-Initialize the publisher
-
-```go
-    sessionCache := hedwig.NewAWSSessionsCache()
-    publisher := hedwig.NewPublisher(sessionCache, settings)
+    publisher := hedwig.NewPublisher(backend, encoderDecoder, encoderDecoder, routing)
 ```
 
 And finally, send a message:
 
 ```go
     headers := map[string]string{}
-    msg, err := hedwig.NewMessage(settings, "email.send", "1.0", headers, data)
+    msg, err := hedwig.NewMessage("email.send", "1.0", headers, data, "myapp")
     if err != nil {
         return err
     }
-    publisher.Publish(context.Background(), msg)
+    err := publisher.Publish(context.Background(), msg)
 ```
 
+In consumer application, define your callback:
+
+```go
+    // Handler
+    func HandleSendEmail(ctx context.Context, msg *hedwig.Message) error {
+        to := msg.data.(*SendEmailV1).GetTo()
+		// actually send email
+    }
+```
+
+And start the consumer:
+```go
+    settings := aws.Settings {
+        AWSAccessKey:    <YOUR AWS KEY>,
+        AWSAccountID:    <YOUR AWS ACCOUNT ID>,
+        AWSRegion:       <YOUR AWS REGION>,
+        AWSSecretKey:    <YOUR AWS SECRET KEY>,
+        AWSSessionToken: <YOUR AWS SESSION TOKEN>, 
+    }
+    backend := aws.NewBackend(settings, nil)
+	encoderDecoder := protobuf.NewMessageEncoderDecoder([]proto.Message{&SendEmailV1{}})
+    registry := hedwig.CallbackRegistry{{"email.send", 1}: HandleSendEmail}
+    consumer := hedwig.NewConsumer(backend, encoderDecoder, nil, registry)
+    err := consumer.ListenForMessages(context.Background(), hedwig.ListenRequest{})
+```
+
+For more complete code, see [examples](examples).
 
 ## Development
 

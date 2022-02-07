@@ -1,7 +1,3 @@
-/*
- * Author: Michael Ngo
- */
-
 package jsonschema
 
 import (

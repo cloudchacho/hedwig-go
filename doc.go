@@ -1,7 +1,3 @@
-/*
- * Author: Michael Ngo
- */
-
 package hedwig
 
 /*
@@ -30,9 +26,9 @@ Initialization
 
 Define a few required settings. Please see the settings struct for the additional optional parameters.
 
-    validator, err := hedwig.NewMessageValidator("schema.json")
+    serializer, err := hedwig.newMessageValidator("schema.json")
     if err != nil {
-        panic("Failed to create validator")
+        panic("Failed to create serializer")
     }
     settings := &hedwig.Settings{
         AWSAccessKey:              <YOUR AWS KEY>,
@@ -48,7 +44,7 @@ Define a few required settings. Please see the settings struct for the additiona
     		        MajorVersion: 1,
     	      }: "send_email",
         },
-        Validator:                 validator,
+        Validator:                 serializer,
     }
 
 Schema
@@ -80,35 +76,35 @@ and other metadata fields as described in the struct definition.
 
 Publisher
 
-Assuming the publisher has already been initialized, You can publish messages like so:
+Assuming the Publisher has already been initialized, You can publish messages like so:
 
     headers := map[string]string{}
     msg, err := hedwig.NewMessage(settings, "email.send", "1.0", headers, data)
     if err != nil {
         return err
     }
-    publisher.Publish(ctx, msg)
+    Publisher.Publish(ctx, msg)
 
 If you want to include a custom headers with the message (for example, you can include a request_id field
 for cross-application tracing), you can pass it in additional parameter headers.
 
 Consumer
 
-A consumer for SQS based workers can be started as following:
+A Consumer for SQS based workers can be started as following:
 
-    consumer := hedwig.NewQueueConsumer(sessionCache, settings)
-    consumer.ListenForMessages(ctx, &hedwig.ListenRequest{...})
+    Consumer := hedwig.NewQueueConsumer(sessionCache, settings)
+    Consumer.ListenForMessages(ctx, &hedwig.ListenRequest{...})
 
 This is a blocking function.
 
-A consumer for Lambda based workers can be started as following:
+A Consumer for Lambda based workers can be started as following:
 
-    consumer = hedwig.NewLambdaConsumer(sessionCache, settings)
-    consumer.HandleLambdaEvent(ctx, snsEvent)
+    Consumer = hedwig.NewLambdaConsumer(sessionCache, settings)
+    Consumer.HandleLambdaEvent(ctx, snsEvent)
 
 where snsEvent is the event provided by AWS to your Lambda
 function as described in AWS documentation: https://docs.aws.amazon.com/lambda/latest/dg/eventsources.html#eventsources-sns.
 The lambda event handler can also be passed into the AWS Lambda SDK as follows:
 
-    lambda.Start(consumer.HandleLambdaEvent)
+    lambda.Start(Consumer.HandleLambdaEvent)
 */

@@ -11,7 +11,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/request"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sns"
 	"github.com/aws/aws-sdk-go/service/sns/snsiface"
 	"github.com/aws/aws-sdk-go/service/sqs"
@@ -21,12 +23,16 @@ import (
 	"github.com/cloudchacho/hedwig-go"
 )
 
-type backend struct {
-	settings *hedwig.Settings
+type Backend struct {
+	settings Settings
 
-	sqs sqsiface.SQSAPI
-	sns snsiface.SNSAPI
+	sqs       sqsiface.SQSAPI
+	sns       snsiface.SNSAPI
+	getLogger hedwig.GetLoggerFunc
 }
+
+var _ = hedwig.ConsumerBackend(&Backend{})
+var _ = hedwig.PublisherBackend(&Backend{})
 
 // Metadata is additional metadata associated with a message
 type Metadata struct {
@@ -48,21 +54,21 @@ type Metadata struct {
 
 const sqsWaitTimeoutSeconds int64 = 20
 
-func (a *backend) getSQSQueueName() string {
-	return fmt.Sprintf("HEDWIG-%s", a.settings.QueueName)
+func (b *Backend) getSQSQueueName() string {
+	return fmt.Sprintf("HEDWIG-%s", b.settings.QueueName)
 }
 
-func (a *backend) getSQSDLQName() string {
-	return fmt.Sprintf("HEDWIG-%s-DLQ", a.settings.QueueName)
+func (b *Backend) getSQSDLQName() string {
+	return fmt.Sprintf("HEDWIG-%s-DLQ", b.settings.QueueName)
 }
 
-func (a *backend) getSNSTopic(messageTopic string) string {
-	return fmt.Sprintf("arn:aws:sns:%s:%s:hedwig-%s", a.settings.AWSRegion, a.settings.AWSAccountID, messageTopic)
+func (b *Backend) getSNSTopic(messageTopic string) string {
+	return fmt.Sprintf("arn:aws:sns:%s:%s:hedwig-%s", b.settings.AWSRegion, b.settings.AWSAccountID, messageTopic)
 }
 
-func (a *backend) getSQSQueueURL(ctx context.Context) (*string, error) {
-	out, err := a.sqs.GetQueueUrlWithContext(ctx, &sqs.GetQueueUrlInput{
-		QueueName: aws.String(a.getSQSQueueName()),
+func (b *Backend) getSQSQueueURL(ctx context.Context) (*string, error) {
+	out, err := b.sqs.GetQueueUrlWithContext(ctx, &sqs.GetQueueUrlInput{
+		QueueName: aws.String(b.getSQSQueueName()),
 	})
 	if err != nil {
 		return nil, err
@@ -70,9 +76,9 @@ func (a *backend) getSQSQueueURL(ctx context.Context) (*string, error) {
 	return out.QueueUrl, nil
 }
 
-func (a *backend) getSQSDLQURL(ctx context.Context) (*string, error) {
-	out, err := a.sqs.GetQueueUrlWithContext(ctx, &sqs.GetQueueUrlInput{
-		QueueName: aws.String(a.getSQSDLQName()),
+func (b *Backend) getSQSDLQURL(ctx context.Context) (*string, error) {
+	out, err := b.sqs.GetQueueUrlWithContext(ctx, &sqs.GetQueueUrlInput{
+		QueueName: aws.String(b.getSQSDLQName()),
 	})
 	if err != nil {
 		return nil, err
@@ -82,7 +88,7 @@ func (a *backend) getSQSDLQURL(ctx context.Context) (*string, error) {
 
 // isValidForSQS checks that the payload is allowed in SQS message body since only some UTF8 characters are allowed
 // ref: https://docs.amazonaws.cn/en_us/AWSSimpleQueueService/latest/APIReference/API_SendMessage.html
-func (a *backend) isValidForSQS(payload []byte) bool {
+func (b *Backend) isValidForSQS(payload []byte) bool {
 	if !utf8.Valid(payload) {
 		return false
 	}
@@ -93,12 +99,12 @@ func (a *backend) isValidForSQS(payload []byte) bool {
 }
 
 // Publish a message represented by the payload, with specified attributes to the specific topic
-func (a *backend) Publish(ctx context.Context, message *hedwig.Message, payload []byte, attributes map[string]string, topic string) (string, error) {
-	snsTopic := a.getSNSTopic(topic)
+func (b *Backend) Publish(ctx context.Context, message *hedwig.Message, payload []byte, attributes map[string]string, topic string) (string, error) {
+	snsTopic := b.getSNSTopic(topic)
 	var payloadStr string
 
 	// SNS requires UTF-8 encoded string
-	if !a.isValidForSQS(payload) {
+	if !b.isValidForSQS(payload) {
 		payloadStr = base64.StdEncoding.EncodeToString(payload)
 		attributes["hedwig_encoding"] = "base64"
 	} else {
@@ -113,14 +119,14 @@ func (a *backend) Publish(ctx context.Context, message *hedwig.Message, payload 
 		}
 	}
 
-	result, err := a.sns.PublishWithContext(
+	result, err := b.sns.PublishWithContext(
 		ctx,
 		&sns.PublishInput{
 			TopicArn:          &snsTopic,
 			Message:           &payloadStr,
 			MessageAttributes: snsAttributes,
 		},
-		request.WithResponseReadTimeout(a.settings.AWSReadTimeoutS),
+		request.WithResponseReadTimeout(b.settings.AWSReadTimeoutS),
 	)
 	if err != nil {
 		return "", errors.Wrap(err, "Failed to publish message to SNS")
@@ -130,8 +136,8 @@ func (a *backend) Publish(ctx context.Context, message *hedwig.Message, payload 
 
 // Receive messages from configured queue(s) and provide it through the callback. This should run indefinitely
 // until the context is canceled. Provider metadata should include all info necessary to ack/nack a message.
-func (a *backend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback hedwig.ConsumerCallback) error {
-	queueURL, err := a.getSQSQueueURL(ctx)
+func (b *Backend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback hedwig.ConsumerCallback) error {
+	queueURL, err := b.getSQSQueueURL(ctx)
 	if err != nil {
 		return errors.Wrap(err, "failed to get SQS Queue URL")
 	}
@@ -151,7 +157,7 @@ func (a *backend) Receive(ctx context.Context, numMessages uint32, visibilityTim
 			// if work was canceled because of context cancelation, signal that
 			return ctx.Err()
 		}
-		out, err := a.sqs.ReceiveMessageWithContext(ctx, input)
+		out, err := b.sqs.ReceiveMessageWithContext(ctx, input)
 		if err != nil {
 			return errors.Wrap(err, "failed to receive SQS message")
 		}
@@ -194,7 +200,7 @@ func (a *backend) Receive(ctx context.Context, numMessages uint32, visibilityTim
 				if encoding, ok := attributes["hedwig_encoding"]; ok && encoding == "base64" {
 					payload, err = base64.StdEncoding.DecodeString(string(payload))
 					if err != nil {
-						a.settings.GetLogger(ctx).Error(
+						b.getLogger(ctx).Error(
 							err,
 							"Invalid message payload - couldn't decode using base64",
 							hedwig.LoggingFields{"message_id": queueMessage.MessageId},
@@ -210,12 +216,12 @@ func (a *backend) Receive(ctx context.Context, numMessages uint32, visibilityTim
 }
 
 // RequeueDLQ re-queues everything in the Hedwig DLQ back into the Hedwig queue
-func (a *backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration) error {
-	queueURL, err := a.getSQSQueueURL(ctx)
+func (b *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration) error {
+	queueURL, err := b.getSQSQueueURL(ctx)
 	if err != nil {
 		return errors.Wrap(err, "failed to get SQS Queue URL")
 	}
-	dlqURL, err := a.getSQSDLQURL(ctx)
+	dlqURL, err := b.getSQSDLQURL(ctx)
 	if err != nil {
 		return errors.Wrap(err, "failed to get SQS DLQ URL")
 	}
@@ -236,7 +242,7 @@ func (a *backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		out, err := a.sqs.ReceiveMessageWithContext(ctx, input)
+		out, err := b.sqs.ReceiveMessageWithContext(ctx, input)
 		if err != nil {
 			return errors.Wrap(err, "failed to receive SQS message")
 		}
@@ -254,7 +260,7 @@ func (a *backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 			receipts[*message.MessageId] = message.ReceiptHandle
 		}
 		sendInput := &sqs.SendMessageBatchInput{Entries: entries, QueueUrl: queueURL}
-		sendOut, err := a.sqs.SendMessageBatchWithContext(ctx, sendInput, request.WithResponseReadTimeout(a.settings.AWSReadTimeoutS))
+		sendOut, err := b.sqs.SendMessageBatchWithContext(ctx, sendInput, request.WithResponseReadTimeout(b.settings.AWSReadTimeoutS))
 		if err != nil {
 			return errors.Wrap(err, "failed to send messages")
 		}
@@ -267,7 +273,7 @@ func (a *backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 				}
 			}
 			deleteInput := &sqs.DeleteMessageBatchInput{Entries: deleteEntries, QueueUrl: dlqURL}
-			deleteOutput, err := a.sqs.DeleteMessageBatchWithContext(ctx, deleteInput)
+			deleteOutput, err := b.sqs.DeleteMessageBatchWithContext(ctx, deleteInput)
 			if err != nil {
 				return errors.Wrap(err, "failed to ack messages")
 			}
@@ -279,39 +285,92 @@ func (a *backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 			return errors.New("failed to send some messages")
 		}
 		numMessagesRequeued += uint32(len(sendOut.Successful))
-		a.settings.GetLogger(ctx).Info("Re-queue DLQ progress", hedwig.LoggingFields{"num_messages": numMessagesRequeued})
+		b.getLogger(ctx).Info("Re-queue DLQ progress", hedwig.LoggingFields{"num_messages": numMessagesRequeued})
 	}
 }
 
 // NackMessage nacks a message on the queue
-func (a *backend) NackMessage(ctx context.Context, providerMetadata interface{}) error {
+func (b *Backend) NackMessage(ctx context.Context, providerMetadata interface{}) error {
 	// not supported by AWS
 	return nil
 }
 
 // AckMessage acknowledges a message on the queue
-func (a *backend) AckMessage(ctx context.Context, providerMetadata interface{}) error {
+func (b *Backend) AckMessage(ctx context.Context, providerMetadata interface{}) error {
 	receipt := providerMetadata.(Metadata).ReceiptHandle
-	queueURL, err := a.getSQSQueueURL(ctx)
+	queueURL, err := b.getSQSQueueURL(ctx)
 	if err != nil {
 		return errors.Wrap(err, "failed to get SQS Queue URL")
 	}
-	_, err = a.sqs.DeleteMessageWithContext(ctx, &sqs.DeleteMessageInput{
+	_, err = b.sqs.DeleteMessageWithContext(ctx, &sqs.DeleteMessageInput{
 		QueueUrl:      queueURL,
 		ReceiptHandle: aws.String(receipt),
 	})
 	return err
 }
 
-// NewBackend creates a backend for publishing and consuming from AWS
-// The provider metadata produced by this backend will have concrete type: aws.Metadata
-func NewBackend(settings *hedwig.Settings, sessionCache *SessionsCache) hedwig.IBackend {
+// Settings for AWS Backend
+type Settings struct {
+	// AWS Region
+	AWSRegion string
+	// AWS account id
+	AWSAccountID string
+	// AWS access key
+	AWSAccessKey string
+	// AWS secret key
+	AWSSecretKey string
+	// AWS session token that represents temporary credentials (i.e. for Lambda app)
+	AWSSessionToken string
+	// AWS read timeout for Publisher
+	AWSReadTimeoutS time.Duration // optional; default: 2 seconds
+	// Name of the queue for this application
+	QueueName string
+}
 
-	awsSession := sessionCache.GetSession(settings)
-
-	return &backend{
-		settings,
-		sqs.New(awsSession),
-		sns.New(awsSession),
+func (b *Backend) initDefaults() {
+	if b.settings.AWSReadTimeoutS == 0 {
+		b.settings.AWSReadTimeoutS = 2 * time.Second
 	}
+	if b.getLogger == nil {
+		stdLogger := &hedwig.StdLogger{}
+		b.getLogger = func(_ context.Context) hedwig.Logger { return stdLogger }
+	}
+}
+
+func createSession(region, awsAccessKey, awsSecretAccessKey, awsSessionToken string) *session.Session {
+	var creds *credentials.Credentials
+	if awsAccessKey != "" && awsSecretAccessKey != "" {
+		creds = credentials.NewStaticCredentialsFromCreds(
+			credentials.Value{
+				AccessKeyID:     awsAccessKey,
+				SecretAccessKey: awsSecretAccessKey,
+				SessionToken:    awsSessionToken,
+			},
+		)
+	}
+	return session.Must(session.NewSessionWithOptions(
+		session.Options{
+			Config: aws.Config{
+				Credentials: creds,
+				Region:      aws.String(region),
+				DisableSSL:  aws.Bool(false),
+			},
+		}))
+}
+
+// NewBackend creates a Backend for publishing and consuming from AWS
+// The provider metadata produced by this Backend will have concrete type: aws.Metadata
+func NewBackend(settings Settings, getLogger hedwig.GetLoggerFunc) *Backend {
+	awsSession := createSession(
+		settings.AWSRegion, settings.AWSAccessKey, settings.AWSSecretKey, settings.AWSSessionToken,
+	)
+
+	b := &Backend{
+		settings:  settings,
+		sqs:       sqs.New(awsSession),
+		sns:       sns.New(awsSession),
+		getLogger: getLogger,
+	}
+	b.initDefaults()
+	return b
 }
