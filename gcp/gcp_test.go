@@ -65,14 +65,6 @@ func (f *fakeLogger) Debug(message string, fields hedwig.LoggingFields) {
 	f.logs = append(f.logs, fakeLog{"debug", nil, message, fields})
 }
 
-type fakeConsumerCallback struct {
-	mock.Mock
-}
-
-func (fc *fakeConsumerCallback) Callback(ctx context.Context, payload []byte, attributes map[string]string, providerMetadata interface{}) {
-	fc.Called(ctx, payload, attributes, providerMetadata)
-}
-
 func (f *fakeValidator) Serialize(message *hedwig.Message) ([]byte, map[string]string, error) {
 	args := f.Called(message)
 	return args.Get(0).([]byte), args.Get(1).(map[string]string), args.Error(2)
@@ -115,18 +107,27 @@ func (s *BackendTestSuite) TestReceive() {
 	err = s.publish(payload2, attributes2, "hedwig-dev-user-created-v1", "")
 	s.Require().NoError(err)
 
-	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload, attributes, mock.AnythingOfType("gcp.Metadata")).
+	m := mock.Mock{}
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for receivedMessage := range s.messageCh {
+			m.MethodCalled("MessageReceived", receivedMessage.Payload, receivedMessage.Attributes, receivedMessage.ProviderMetadata)
+		}
+	}()
+	m.On("MessageReceived", payload, attributes, mock.AnythingOfType("gcp.Metadata")).
 		// message must be acked or Receive never returns
 		Run(func(args mock.Arguments) {
-			err := s.backend.AckMessage(ctx, args.Get(3))
+			err := s.backend.AckMessage(ctx, args.Get(2))
 			s.Require().NoError(err)
 		}).
 		Return().
 		Once()
-	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload2, attributes2, mock.AnythingOfType("gcp.Metadata")).
+	m.On("MessageReceived", payload2, attributes2, mock.AnythingOfType("gcp.Metadata")).
 		// message must be acked or Receive never returns
 		Run(func(args mock.Arguments) {
-			err := s.backend.AckMessage(ctx, args.Get(3))
+			err := s.backend.AckMessage(ctx, args.Get(2))
 			s.Require().NoError(err)
 			cancel()
 		}).
@@ -135,12 +136,14 @@ func (s *BackendTestSuite) TestReceive() {
 		After(time.Millisecond * 50)
 
 	testutils.RunAndWait(func() {
-		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.messageCh)
 		s.True(err.Error() == "draining" || err == context.Canceled)
+		close(s.messageCh)
 	})
+	wg.Wait()
 
-	if s.fakeConsumerCallback.AssertExpectations(s.T()) {
-		providerMetadata := s.fakeConsumerCallback.Mock.Calls[0].Arguments.Get(3).(gcp.Metadata)
+	if m.AssertExpectations(s.T()) {
+		providerMetadata := m.Calls[0].Arguments.Get(2).(gcp.Metadata)
 		s.Equal(1, providerMetadata.DeliveryAttempt)
 	}
 }
@@ -162,10 +165,20 @@ func (s *BackendTestSuite) TestReceiveCrossProject() {
 	err := s.publish(payload, attributes, "hedwig-dev-user-created-v1", "other-project")
 	s.Require().NoError(err)
 
-	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), payload, attributes, mock.AnythingOfType("gcp.Metadata")).
+	m := mock.Mock{}
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for receivedMessage := range s.messageCh {
+			m.MethodCalled("MessageReceived", receivedMessage.Payload, receivedMessage.Attributes, receivedMessage.ProviderMetadata)
+		}
+	}()
+
+	m.On("MessageReceived", payload, attributes, mock.AnythingOfType("gcp.Metadata")).
 		// message must be acked or Receive never returns
 		Run(func(args mock.Arguments) {
-			err := backend.AckMessage(ctx, args.Get(3))
+			err := backend.AckMessage(ctx, args.Get(2))
 			s.Require().NoError(err)
 			cancel()
 		}).
@@ -173,13 +186,15 @@ func (s *BackendTestSuite) TestReceiveCrossProject() {
 		Once()
 
 	testutils.RunAndWait(func() {
-		err := backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
+		err := backend.Receive(ctx, numMessages, visibilityTimeout, s.messageCh)
 		s.True(err.Error() == "draining" || err == context.Canceled)
+		close(s.messageCh)
 	})
 
-	s.fakeConsumerCallback.AssertExpectations(s.T())
+	wg.Wait()
+	m.AssertExpectations(s.T())
 
-	providerMetadata := s.fakeConsumerCallback.Mock.Calls[0].Arguments.Get(3).(gcp.Metadata)
+	providerMetadata := m.Calls[0].Arguments.Get(2).(gcp.Metadata)
 	s.Equal(1, providerMetadata.DeliveryAttempt)
 }
 
@@ -190,11 +205,11 @@ func (s *BackendTestSuite) TestReceiveNoMessages() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*200)
 	defer cancel()
 	testutils.RunAndWait(func() {
-		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.messageCh)
 		s.True(err.Error() == "draining" || err == context.DeadlineExceeded)
 	})
 
-	s.fakeConsumerCallback.AssertExpectations(s.T())
+	s.Empty(s.messageCh)
 }
 
 func (s *BackendTestSuite) TestReceiveError() {
@@ -208,11 +223,11 @@ func (s *BackendTestSuite) TestReceiveError() {
 	backend := gcp.NewBackend(s.settings, nil)
 
 	testutils.RunAndWait(func() {
-		err := backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
+		err := backend.Receive(ctx, numMessages, visibilityTimeout, s.messageCh)
 		s.EqualError(err, "rpc error: code = NotFound desc = Subscription does not exist (resource=hedwig-does-not-exist)")
 	})
 
-	s.fakeConsumerCallback.AssertExpectations(s.T())
+	s.Empty(s.messageCh)
 }
 
 func (s *BackendTestSuite) TestRequeueDLQ() {
@@ -287,8 +302,6 @@ func (s *BackendTestSuite) TestRequeueDLQReceiveError() {
 		err := backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
 		s.EqualError(err, "rpc error: code = NotFound desc = Subscription does not exist (resource=hedwig-does-not-exist-dlq)")
 	})
-
-	s.fakeConsumerCallback.AssertExpectations(s.T())
 }
 
 func (s *BackendTestSuite) TestRequeueDLQPublishError() {
@@ -367,7 +380,8 @@ func (s *BackendTestSuite) TestAck() {
 }
 
 func (s *BackendTestSuite) TestNack() {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*200)
+	defer cancel()
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 10
 
@@ -377,21 +391,31 @@ func (s *BackendTestSuite) TestNack() {
 	s.NoError(err)
 	s.NotEmpty(messageID)
 
-	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.cancelCtx"), s.payload, s.attributes, mock.AnythingOfType("gcp.Metadata")).
+	m := mock.Mock{}
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for receivedMessage := range s.messageCh {
+			m.MethodCalled("MessageReceived", receivedMessage.Payload, receivedMessage.Attributes, receivedMessage.ProviderMetadata)
+		}
+	}()
+	m.On("MessageReceived", s.payload, s.attributes, mock.AnythingOfType("gcp.Metadata")).
 		Run(func(args mock.Arguments) {
-			err := s.backend.NackMessage(ctx, args.Get(3))
+			err := s.backend.NackMessage(ctx, args.Get(2))
 			s.Require().NoError(err)
+			cancel()
 		}).
 		Return()
 
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*200)
-	defer cancel()
 	testutils.RunAndWait(func() {
-		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
-		s.True(err.Error() == "draining" || err == context.DeadlineExceeded)
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.messageCh)
+		s.True(err.Error() == "draining" || err == context.Canceled)
+		close(s.messageCh)
 	})
+	wg.Wait()
 
-	s.fakeConsumerCallback.AssertExpectations(s.T())
+	m.AssertExpectations(s.T())
 }
 
 func (s *BackendTestSuite) TestNew() {
@@ -400,15 +424,15 @@ func (s *BackendTestSuite) TestNew() {
 
 type BackendTestSuite struct {
 	suite.Suite
-	backend              *gcp.Backend
-	client               *pubsub.Client
-	otherProjectClient   *pubsub.Client
-	settings             gcp.Settings
-	message              *hedwig.Message
-	payload              []byte
-	attributes           map[string]string
-	validator            *fakeValidator
-	fakeConsumerCallback *fakeConsumerCallback
+	backend            *gcp.Backend
+	client             *pubsub.Client
+	otherProjectClient *pubsub.Client
+	settings           gcp.Settings
+	message            *hedwig.Message
+	payload            []byte
+	attributes         map[string]string
+	validator          *fakeValidator
+	messageCh          chan hedwig.ReceivedMessage
 }
 
 func (s *BackendTestSuite) SetupSuite() {
@@ -532,7 +556,6 @@ func (s *BackendTestSuite) SetupTest() {
 	getLogger := func(_ context.Context) hedwig.Logger {
 		return logger
 	}
-	fakeMessageCallback := &fakeConsumerCallback{}
 	message, err := hedwig.NewMessage("user-created", "1.0", map[string]string{"foo": "bar"}, &fakeHedwigDataField{}, "myapp")
 	require.NoError(s.T(), err)
 
@@ -547,7 +570,7 @@ func (s *BackendTestSuite) SetupTest() {
 	s.validator = validator
 	s.payload = payload
 	s.attributes = attributes
-	s.fakeConsumerCallback = fakeMessageCallback
+	s.messageCh = make(chan hedwig.ReceivedMessage)
 }
 
 func (s *BackendTestSuite) TearDownTest() {
@@ -557,7 +580,7 @@ func (s *BackendTestSuite) TearDownTest() {
 		if subscription, err := subscriptions.Next(); err == iterator.Done {
 			break
 		} else if err != nil {
-			panic(fmt.Sprintf("failed to delete subscriptions with error: %v", err))
+			panic(fmt.Sprintf("failed to drain subscriptions with error: %v", err))
 		} else {
 			err = subscription.SeekToTime(ctx, time.Now())
 			s.Require().NoError(err)

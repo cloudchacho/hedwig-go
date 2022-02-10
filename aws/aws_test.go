@@ -69,14 +69,6 @@ type fakeValidator struct {
 	mock.Mock
 }
 
-type fakeConsumerCallback struct {
-	mock.Mock
-}
-
-func (fc *fakeConsumerCallback) Callback(ctx context.Context, payload []byte, attributes map[string]string, providerMetadata interface{}) {
-	fc.Called(ctx, payload, attributes, providerMetadata)
-}
-
 func (f *fakeValidator) Serialize(message *hedwig.Message) ([]byte, map[string]string, error) {
 	args := f.Called(message)
 	return args.Get(0).([]byte), args.Get(1).(map[string]string), args.Error(2)
@@ -220,7 +212,16 @@ func (s *BackendTestSuite) TestReceive() {
 		SentTime:         sentTime.UTC(),
 		ReceiveCount:     receiveCount,
 	}
-	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.timerCtx"), payload, attributes, providerMetadata).
+	m := mock.Mock{}
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for receivedMessage := range s.messageCh {
+			m.MethodCalled("MessageReceived", receivedMessage.Payload, receivedMessage.Attributes, receivedMessage.ProviderMetadata)
+		}
+	}()
+	m.On("MessageReceived", payload, attributes, providerMetadata).
 		Return().
 		Once()
 	payload2 := []byte("\xbd\xb2\x3d\xbc\x20\xe2\x8c\x98")
@@ -228,17 +229,21 @@ func (s *BackendTestSuite) TestReceive() {
 		"foo":             "bar",
 		"hedwig_encoding": "base64",
 	}
-	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.timerCtx"), payload2, attributes2, providerMetadata).
+	m.On("MessageReceived", payload2, attributes2, providerMetadata).
 		Return().
 		Once()
 
 	testutils.RunAndWait(func() {
-		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.messageCh)
 		s.EqualError(err, "context canceled")
+		close(s.messageCh)
 	})
 
+	wg.Wait()
+
 	s.fakeSQS.AssertExpectations(s.T())
-	s.fakeConsumerCallback.AssertExpectations(s.T())
+	m.AssertExpectations(s.T())
+	s.Empty(s.messageCh)
 }
 
 func (s *BackendTestSuite) TestReceiveFailedNonUTF8Decoding() {
@@ -294,12 +299,14 @@ func (s *BackendTestSuite) TestReceiveFailedNonUTF8Decoding() {
 		})
 
 	testutils.RunAndWait(func() {
-		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.messageCh)
 		s.EqualError(err, "context canceled")
 	})
 
+	close(s.messageCh)
+
 	s.fakeSQS.AssertExpectations(s.T())
-	s.fakeConsumerCallback.AssertExpectations(s.T())
+	s.Empty(s.messageCh)
 	s.Equal(len(s.logger.logs), 1)
 	s.Equal(s.logger.logs[0].message, "Invalid message payload - couldn't decode using base64")
 	s.Error(s.logger.logs[0].err)
@@ -336,12 +343,13 @@ func (s *BackendTestSuite) TestReceiveNoMessages() {
 		})
 
 	testutils.RunAndWait(func() {
-		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.messageCh)
 		s.EqualError(err, "context canceled")
 	})
+	close(s.messageCh)
 
 	s.fakeSQS.AssertExpectations(s.T())
-	s.fakeConsumerCallback.AssertExpectations(s.T())
+	s.Empty(s.messageCh)
 }
 
 func (s *BackendTestSuite) TestReceiveError() {
@@ -374,12 +382,13 @@ func (s *BackendTestSuite) TestReceiveError() {
 		})
 
 	testutils.RunAndWait(func() {
-		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.messageCh)
 		s.EqualError(err, "failed to receive SQS message: no internet")
 	})
 
 	s.fakeSQS.AssertExpectations(s.T())
-	s.fakeConsumerCallback.AssertExpectations(s.T())
+	close(s.messageCh)
+	s.Empty(s.messageCh)
 }
 
 func (s *BackendTestSuite) TestReceiveGetQueueError() {
@@ -393,11 +402,12 @@ func (s *BackendTestSuite) TestReceiveGetQueueError() {
 	s.fakeSQS.On("GetQueueUrlWithContext", ctx, queueInput, mock.Anything).
 		Return((*sqs.GetQueueUrlOutput)(nil), errors.New("no internet"))
 
-	err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
+	err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.messageCh)
 	s.EqualError(err, "failed to get SQS Queue URL: no internet")
 
 	s.fakeSQS.AssertExpectations(s.T())
-	s.fakeConsumerCallback.AssertExpectations(s.T())
+	close(s.messageCh)
+	s.Empty(s.messageCh)
 }
 
 func (s *BackendTestSuite) TestReceiveMissingAttributes() {
@@ -461,17 +471,30 @@ func (s *BackendTestSuite) TestReceiveMissingAttributes() {
 		SentTime:         time.Time{},
 		ReceiveCount:     -1,
 	}
-	s.fakeConsumerCallback.On("Callback", mock.AnythingOfType("*context.timerCtx"), payload, attributes, providerMetadata).
+	m := mock.Mock{}
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for receivedMessage := range s.messageCh {
+			m.MethodCalled("MessageReceived", receivedMessage.Payload, receivedMessage.Attributes, receivedMessage.ProviderMetadata)
+		}
+	}()
+	m.On("MessageReceived", payload, attributes, providerMetadata).
 		Return().
 		Once()
 
 	testutils.RunAndWait(func() {
-		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.fakeConsumerCallback.Callback)
+		err := s.backend.Receive(ctx, numMessages, visibilityTimeout, s.messageCh)
 		s.EqualError(err, "context canceled")
+		close(s.messageCh)
 	})
 
+	wg.Wait()
+
 	s.fakeSQS.AssertExpectations(s.T())
-	s.fakeConsumerCallback.AssertExpectations(s.T())
+	m.AssertExpectations(s.T())
+	s.Empty(s.messageCh)
 }
 
 func (s *BackendTestSuite) TestRequeueDLQ() {
@@ -666,7 +689,8 @@ func (s *BackendTestSuite) TestRequeueDLQNoMessages() {
 	})
 
 	s.fakeSQS.AssertExpectations(s.T())
-	s.fakeConsumerCallback.AssertExpectations(s.T())
+	close(s.messageCh)
+	s.Empty(s.messageCh)
 }
 
 func (s *BackendTestSuite) TestRequeueDLQReceiveError() {
@@ -716,7 +740,8 @@ func (s *BackendTestSuite) TestRequeueDLQReceiveError() {
 	})
 
 	s.fakeSQS.AssertExpectations(s.T())
-	s.fakeConsumerCallback.AssertExpectations(s.T())
+	close(s.messageCh)
+	s.Empty(s.messageCh)
 }
 
 func (s *BackendTestSuite) TestRequeueDLQPublishError() {
@@ -802,7 +827,8 @@ func (s *BackendTestSuite) TestRequeueDLQPublishError() {
 	})
 
 	s.fakeSQS.AssertExpectations(s.T())
-	s.fakeConsumerCallback.AssertExpectations(s.T())
+	close(s.messageCh)
+	s.Empty(s.messageCh)
 }
 
 func (s *BackendTestSuite) TestRequeueDLQPublishPartialError() {
@@ -894,7 +920,8 @@ func (s *BackendTestSuite) TestRequeueDLQPublishPartialError() {
 	})
 
 	s.fakeSQS.AssertExpectations(s.T())
-	s.fakeConsumerCallback.AssertExpectations(s.T())
+	close(s.messageCh)
+	s.Empty(s.messageCh)
 }
 
 func (s *BackendTestSuite) TestRequeueDLQDeleteError() {
@@ -1001,7 +1028,8 @@ func (s *BackendTestSuite) TestRequeueDLQDeleteError() {
 	})
 
 	s.fakeSQS.AssertExpectations(s.T())
-	s.fakeConsumerCallback.AssertExpectations(s.T())
+	close(s.messageCh)
+	s.Empty(s.messageCh)
 }
 
 func (s *BackendTestSuite) TestRequeueDLQDeletePartialError() {
@@ -1114,7 +1142,8 @@ func (s *BackendTestSuite) TestRequeueDLQDeletePartialError() {
 	})
 
 	s.fakeSQS.AssertExpectations(s.T())
-	s.fakeConsumerCallback.AssertExpectations(s.T())
+	close(s.messageCh)
+	s.Empty(s.messageCh)
 }
 
 func (s *BackendTestSuite) TestRequeueDLQGetQueueError() {
@@ -1132,7 +1161,8 @@ func (s *BackendTestSuite) TestRequeueDLQGetQueueError() {
 	s.EqualError(err, "failed to get SQS Queue URL: no internet")
 
 	s.fakeSQS.AssertExpectations(s.T())
-	s.fakeConsumerCallback.AssertExpectations(s.T())
+	close(s.messageCh)
+	s.Empty(s.messageCh)
 }
 
 func (s *BackendTestSuite) TestPublish() {
@@ -1328,16 +1358,16 @@ func (s *BackendTestSuite) TestNew() {
 
 type BackendTestSuite struct {
 	suite.Suite
-	backend              *Backend
-	settings             Settings
-	fakeSQS              *fakeSQS
-	fakeSNS              *fakeSNS
-	message              *hedwig.Message
-	payload              []byte
-	attributes           map[string]string
-	validator            *fakeValidator
-	fakeConsumerCallback *fakeConsumerCallback
-	logger               *fakeLogger
+	backend    *Backend
+	settings   Settings
+	fakeSQS    *fakeSQS
+	fakeSNS    *fakeSNS
+	message    *hedwig.Message
+	payload    []byte
+	attributes map[string]string
+	validator  *fakeValidator
+	messageCh  chan hedwig.ReceivedMessage
+	logger     *fakeLogger
 }
 
 func (s *BackendTestSuite) SetupTest() {
@@ -1352,7 +1382,6 @@ func (s *BackendTestSuite) SetupTest() {
 	}
 	fakeSQS := &fakeSQS{}
 	fakeSNS := &fakeSNS{}
-	fakeMessageCallback := &fakeConsumerCallback{}
 	message, err := hedwig.NewMessage("user-created", "1.0", map[string]string{"foo": "bar"}, &fakeHedwigDataField{}, "myapp")
 	require.NoError(s.T(), err)
 
@@ -1371,7 +1400,7 @@ func (s *BackendTestSuite) SetupTest() {
 	s.validator = validator
 	s.payload = payload
 	s.attributes = attributes
-	s.fakeConsumerCallback = fakeMessageCallback
+	s.messageCh = make(chan hedwig.ReceivedMessage)
 	s.logger = logger
 }
 

@@ -136,7 +136,7 @@ func (b *Backend) Publish(ctx context.Context, message *hedwig.Message, payload 
 
 // Receive messages from configured queue(s) and provide it through the callback. This should run indefinitely
 // until the context is canceled. Provider metadata should include all info necessary to ack/nack a message.
-func (b *Backend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback hedwig.ConsumerCallback) error {
+func (b *Backend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, messageCh chan<- hedwig.ReceivedMessage) error {
 	queueURL, err := b.getSQSQueueURL(ctx)
 	if err != nil {
 		return errors.Wrap(err, "failed to get SQS Queue URL")
@@ -208,7 +208,11 @@ func (b *Backend) Receive(ctx context.Context, numMessages uint32, visibilityTim
 						return
 					}
 				}
-				callback(ctx, payload, attributes, metadata)
+				messageCh <- hedwig.ReceivedMessage{
+					Payload:          payload,
+					Attributes:       attributes,
+					ProviderMetadata: metadata,
+				}
 			}()
 		}
 		wg.Wait()

@@ -24,7 +24,7 @@ func runConsumer(
 }
 
 func runPublisher(
-	backend hedwig.PublisherBackend, encoder hedwig.Encoder, decoder hedwig.Decoder, instrumenter hedwig.Instrumenter,
+	backend hedwig.PublisherBackend, encoderDecoder hedwig.EncoderDecoder, instrumenter hedwig.Instrumenter,
 	dataCreator func() interface{}) {
 	ctx := context.Background()
 	tp := sdktrace.NewTracerProvider()
@@ -37,7 +37,7 @@ func runPublisher(
 			MajorVersion: 1,
 		}: "dev-user-created-v1",
 	}
-	publisher := hedwig.NewPublisher(backend, encoder, decoder, routing)
+	publisher := hedwig.NewPublisher(backend, encoderDecoder, routing)
 	publisher.WithInstrumenter(instrumenter)
 	data := dataCreator()
 	message, err := hedwig.NewMessage("user-created", "1.0", map[string]string{"request_id": "123"}, data, "hedwig-go/examples")
@@ -64,8 +64,7 @@ func requeueDLQ(backend hedwig.ConsumerBackend, decoder hedwig.Decoder, instrume
 func main() {
 	var consumerBackend hedwig.ConsumerBackend
 	var publisherBackend hedwig.PublisherBackend
-	var encoder hedwig.Encoder
-	var decoder hedwig.Decoder
+	var encoderDecoder hedwig.EncoderDecoder
 	var registry hedwig.CallbackRegistry
 	var propagator propagation.TextMapPropagator
 	var dataCreator func() interface{}
@@ -84,15 +83,11 @@ func main() {
 	}
 
 	if isProtobuf {
-		de := protobufEncoderDecoder()
-		encoder = de
-		decoder = de
+		encoderDecoder = protobufEncoderDecoder()
 		registry = protobufRegistry(fakeCallbackErr)
 		dataCreator = protobufDataCreator
 	} else {
-		de := jsonSchemaEncoderDecoder()
-		encoder = de
-		decoder = de
+		encoderDecoder = jsonSchemaEncoderDecoder()
 		registry = jsonSchemaRegistry(fakeCallbackErr)
 		dataCreator = jsonSchemaDataCreator
 	}
@@ -115,11 +110,11 @@ func main() {
 
 	switch os.Args[1] {
 	case "consumer":
-		runConsumer(consumerBackend, decoder, registry, instrumenter, fakeCallbackErr)
+		runConsumer(consumerBackend, encoderDecoder, registry, instrumenter, fakeCallbackErr)
 	case "publisher":
-		runPublisher(publisherBackend, encoder, decoder, instrumenter, dataCreator)
+		runPublisher(publisherBackend, encoderDecoder, instrumenter, dataCreator)
 	case "requeue-dlq":
-		requeueDLQ(consumerBackend, decoder, instrumenter)
+		requeueDLQ(consumerBackend, encoderDecoder, instrumenter)
 	default:
 		panic(fmt.Sprintf("unknown command: %s", os.Args[1]))
 	}

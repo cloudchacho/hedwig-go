@@ -54,16 +54,17 @@ func (p *Publisher) WithUseTransportMessageAttributes(useTransportMessageAttribu
 	p.serializer.withUseTransportMessageAttributes(useTransportMessageAttributes)
 }
 
-// NewPublisher creates a new Publisher
-// messageRouting: Maps message type and major version to topic names
+// NewPublisher creates a new Publisher.
+//
+// `messageRouting`: Maps message type and major version to topic names
 //   <message type>, <message version> => topic name
-// An entry is required for every message type that the app wants to Consumer or publish. It is
+// An entry is required for every message type that the app wants to publish. It is
 // recommended that major versions of a message be published on separate topics.
-func NewPublisher(backend PublisherBackend, encoder Encoder, decoder Decoder, routing MessageRouting) *Publisher {
+func NewPublisher(backend PublisherBackend, encoderDecoder EncoderDecoder, routing MessageRouting) *Publisher {
 	return &Publisher{
 		routing:    routing,
 		backend:    backend,
-		serializer: newMessageValidator(encoder, decoder),
+		serializer: newMessageValidator(encoderDecoder, encoderDecoder),
 	}
 }
 
@@ -86,4 +87,10 @@ type Encoder interface {
 
 	// VerifyKnownMinorVersion checks that message version is known to us
 	VerifyKnownMinorVersion(messageType string, version *semver.Version) error
+}
+
+// EncoderDecoder can both encode and decode messages
+type EncoderDecoder interface {
+	Encoder
+	Decoder
 }

@@ -159,7 +159,7 @@ func (s *PublisherTestSuite) SetupTest() {
 	backend := &fakeBackend{}
 	serializer := &fakeSerializer{}
 
-	s.publisher = NewPublisher(backend, nil, nil, routing)
+	s.publisher = NewPublisher(backend, nil, routing)
 	s.publisher.serializer = serializer
 	s.backend = backend
 	s.serializer = serializer

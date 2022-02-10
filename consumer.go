@@ -2,6 +2,7 @@ package hedwig
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/Masterminds/semver"
@@ -10,8 +11,14 @@ import (
 
 // ListenRequest represents a request to listen for messages
 type ListenRequest struct {
-	NumMessages       uint32        // default 1
+	// How many messages to fetch at one time
+	NumMessages uint32 // default 1
+
+	// How long should the message be hidden from other consumers?
 	VisibilityTimeout time.Duration // defaults to queue configuration
+
+	// How many goroutines to spin for processing messages concurrently
+	NumConcurrency uint32 // default 1
 }
 
 type Consumer struct {
@@ -88,8 +95,39 @@ func (c *QueueConsumer) ListenForMessages(ctx context.Context, request ListenReq
 	if request.NumMessages == 0 {
 		request.NumMessages = 1
 	}
+	if request.NumConcurrency == 0 {
+		request.NumConcurrency = 1
+	}
 
-	return c.backend.Receive(ctx, request.NumMessages, request.VisibilityTimeout, c.processMessage)
+	messageCh := make(chan ReceivedMessage)
+
+	wg := &sync.WaitGroup{}
+	// start n concurrent workers to receive messages from the channel
+	for i := uint32(0); i < request.NumConcurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					// drain channel before returning
+					for receivedMessage := range messageCh {
+						c.processMessage(ctx, receivedMessage.Payload, receivedMessage.Attributes, receivedMessage.ProviderMetadata)
+					}
+					return
+				case receivedMessage := <-messageCh:
+					c.processMessage(ctx, receivedMessage.Payload, receivedMessage.Attributes, receivedMessage.ProviderMetadata)
+				}
+			}
+		}()
+	}
+	// wait for all receive goroutines to finish
+	defer wg.Wait()
+
+	// close channel to indicate no more message will be published and receive goroutines spawned above should return
+	defer close(messageCh)
+
+	return c.backend.Receive(ctx, request.NumMessages, request.VisibilityTimeout, messageCh)
 }
 
 // RequeueDLQ re-queues everything in the Hedwig DLQ back into the Hedwig queue
@@ -166,9 +204,10 @@ var ErrRetry = errors.New("Retry error")
 
 // ConsumerBackend is used for consuming messages from a transport
 type ConsumerBackend interface {
-	// Receive messages from configured queue(s) and provide it through the callback. This should run indefinitely
+	// Receive messages from configured queue(s) and provide it through the channel. This should run indefinitely
 	// until the context is canceled. Provider metadata should include all info necessary to ack/nack a message.
-	Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback ConsumerCallback) error
+	// The channel must not be closed by the backend.
+	Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, messageCh chan<- ReceivedMessage) error
 
 	// NackMessage nacks a message on the queue
 	NackMessage(ctx context.Context, providerMetadata interface{}) error
@@ -182,7 +221,12 @@ type ConsumerBackend interface {
 	RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration) error
 }
 
-type ConsumerCallback func(ctx context.Context, payload []byte, attributes map[string]string, providerMetadata interface{})
+// ReceivedMessage is the message as received by a transport backend.
+type ReceivedMessage struct {
+	Payload          []byte
+	Attributes       map[string]string
+	ProviderMetadata interface{}
+}
 
 // Decoder is responsible for decoding the message payload in appropriate format from over the wire transport format
 type Decoder interface {
