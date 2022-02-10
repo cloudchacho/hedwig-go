@@ -62,8 +62,8 @@ type fakeBackend struct {
 	mock.Mock
 }
 
-func (b *fakeBackend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, callback ConsumerCallback) error {
-	args := b.Called(ctx, numMessages, visibilityTimeout, callback)
+func (b *fakeBackend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, messageCh chan<- ReceivedMessage) error {
+	args := b.Called(ctx, numMessages, visibilityTimeout, messageCh)
 	return args.Error(0)
 }
 
@@ -298,16 +298,53 @@ func (s *ConsumerTestSuite) TestProcessMessageFollowsParentTrace() {
 }
 
 func (s *ConsumerTestSuite) TestListenForMessages() {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+	defer cancel()
 	numMessages := uint32(10)
 	visibilityTimeout := time.Second * 20
-	s.backend.On("Receive", ctx, numMessages, visibilityTimeout, mock.AnythingOfType("ConsumerCallback")).
+	payload := []byte(`foobar`)
+	attributes := map[string]string{"request_id": "123"}
+	providerMetadata := struct{}{}
+	payload2 := []byte(`foobar2`)
+	attributes2 := map[string]string{"request_id": "456"}
+	providerMetadata2 := struct{}{}
+	message := Message{Type: "user-created", DataSchemaVersion: semver.MustParse("1.0")}
+	s.deserializer.On("deserialize", payload, attributes, providerMetadata).
+		Return(&message, nil)
+	s.deserializer.On("deserialize", payload2, attributes2, providerMetadata2).
+		Return(&message, nil)
+	s.callback.On("Callback", ctx, &message).
+		Return(nil).
+		After(time.Millisecond * 50)
+	s.callback.On("Callback", ctx, &message).
+		Return(nil)
+	s.backend.On("AckMessage", ctx, providerMetadata).
+		Return(nil)
+	s.backend.On("AckMessage", ctx, providerMetadata2).
+		Return(nil)
+	s.backend.On("Receive", ctx, numMessages, visibilityTimeout, mock.AnythingOfType("chan<- hedwig.ReceivedMessage")).
 		Return(context.Canceled).
+		Run(func(args mock.Arguments) {
+			ch := args.Get(3).(chan<- ReceivedMessage)
+			ch <- ReceivedMessage{
+				Payload:          payload,
+				Attributes:       attributes,
+				ProviderMetadata: providerMetadata,
+			}
+			ch <- ReceivedMessage{
+				Payload:          payload2,
+				Attributes:       attributes2,
+				ProviderMetadata: providerMetadata2,
+			}
+		}).
 		After(500 * time.Millisecond)
-	err := s.consumer.ListenForMessages(ctx, ListenRequest{numMessages, visibilityTimeout})
+	err := s.consumer.ListenForMessages(ctx, ListenRequest{numMessages, visibilityTimeout, 1})
 	assert.EqualError(s.T(), err, "context canceled")
 	s.backend.AssertExpectations(s.T())
+	s.deserializer.AssertExpectations(s.T())
+	s.callback.AssertExpectations(s.T())
 }
+
 func (s *ConsumerTestSuite) TestUseTransportMessageAttributes() {
 	s.deserializer.On("withUseTransportMessageAttributes", false).
 		Return(s.deserializer, nil)
