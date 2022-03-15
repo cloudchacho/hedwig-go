@@ -30,7 +30,7 @@ func (p testTracerProvider) Tracer(string, ...trace.TracerOption) trace.Tracer {
 // testTracer is an implementation of Tracer that returns instances of testSpan
 type testTracer struct{}
 
-func (t testTracer) Start(ctx context.Context, name string, _ ...trace.SpanOption) (context.Context, trace.Span) {
+func (t testTracer) Start(ctx context.Context, name string, _ ...trace.SpanStartOption) (context.Context, trace.Span) {
 	span := &testSpan{}
 	return trace.ContextWithSpan(ctx, span), span
 }
@@ -46,15 +46,13 @@ func (*testSpan) IsRecording() bool { return false }
 
 func (*testSpan) SetStatus(codes.Code, string) {}
 
-func (*testSpan) SetError(bool) {}
-
 func (*testSpan) SetAttributes(...attribute.KeyValue) {}
 
-func (*testSpan) End(...trace.SpanOption) {}
+func (*testSpan) End(...trace.SpanEndOption) {}
 
 func (*testSpan) RecordError(error, ...trace.EventOption) {}
 
-func (*testSpan) Tracer() trace.Tracer { return testTracer{} }
+func (*testSpan) TracerProvider() trace.TracerProvider { return testTracerProvider{} }
 
 func (*testSpan) AddEvent(string, ...trace.EventOption) {}
 
