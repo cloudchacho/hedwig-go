@@ -11,7 +11,7 @@ message UserCreatedV1 {
   option (hedwig.message_options).minor_version = 0;
   option (hedwig.message_options).message_type = "user-created";
 
-  string user_id = 1;
+  required string user_id = 1;
 }
 
 message UserUpdatedV1 {
@@ -19,5 +19,5 @@ message UserUpdatedV1 {
   option (hedwig.message_options).minor_version = 0;
   option (hedwig.message_options).message_type = "user-updated";
 
-  string user_id = 1;
+  required string user_id = 1;
 }
