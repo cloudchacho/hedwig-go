@@ -1,6 +1,6 @@
 module github.com/cloudchacho/hedwig-go
 
-go 1.17
+go 1.18
 
 retract (
 	v1.0.5 // Contains retractions only.
