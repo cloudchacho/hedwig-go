@@ -20,11 +20,71 @@ type MetaAttributes struct {
 	FormatVersion *semver.Version
 }
 
+type FirehoseValidator interface {
+	encodeFirehosePayload(string, *semver.Version, map[string]string, []byte) ([]byte, error)
+	extractFirehoseData([]byte) (MetaAttributes, []byte, error)
+}
+
 type messageValidator struct {
 	encoder                       Encoder
 	decoder                       Decoder
 	currentFormatVersion          *semver.Version
 	useTransportMessageAttributes bool
+	firehoseValidator FirehoseValidator
+}
+
+func (v *messageValidator) getPayloadandAttributes(message *Message) ([]byte, map[string]string, error) {
+	err := v.encoder.VerifyKnownMinorVersion(message.Type, message.DataSchemaVersion)
+	if err != nil {
+		return nil, nil, err
+	}
+	err = v.verifyHeaders(message.Metadata.Headers)
+	if err != nil {
+		return nil, nil, err
+	}
+	schema := v.encoder.EncodeMessageType(message.Type, message.DataSchemaVersion)
+	metaAttrs := MetaAttributes{
+		message.Metadata.Timestamp,
+		message.Metadata.Publisher,
+		message.Metadata.Headers,
+		message.ID,
+		schema,
+		v.currentFormatVersion,
+	}
+	messagePayload, err := v.encoder.EncodeData(message.Data, v.useTransportMessageAttributes, metaAttrs)
+	if err != nil {
+		return nil, nil, err
+	}
+	var attributes map[string]string
+	if v.useTransportMessageAttributes {
+		attributes = v.encodeMetaAttributes(metaAttrs)
+	} else {
+		attributes = message.Metadata.Headers
+	}
+	return messagePayload, attributes, nil
+}
+
+func (v *messageValidator) DeserializeFirehose(line []byte) (*Message, error) {
+	metaAttrs, messagePayload, err := v.firehoseValidator.extractFirehoseData(line)
+	attributes :=  v.encodeMetaAttributes(metaAttrs)
+	if err != nil {
+		return nil, err
+	}
+	return v.deserialize(messagePayload, attributes, nil)
+}
+
+func (v *messageValidator) SerializeFirehose(message *Message) ([]byte, error) {
+	messagePayload, attributes, err := v.getPayloadandAttributes(message)
+	if err != nil {
+		return nil, err
+	}
+	// encode to fierhose format
+	encoded, err := v.firehoseValidator.encodeFirehosePayload(message.Type, message.DataSchemaVersion, attributes, messagePayload)
+	if err != nil {
+		return nil, err
+	}
+	_, err = v.DeserializeFirehose(encoded)
+	return encoded, err
 }
 
 // decodeMetaAttributes decodes message transport attributes as MetaAttributes
@@ -90,33 +150,7 @@ func (v *messageValidator) encodeMetaAttributes(metaAttrs MetaAttributes) map[st
 }
 
 func (v *messageValidator) serialize(message *Message) ([]byte, map[string]string, error) {
-	err := v.encoder.VerifyKnownMinorVersion(message.Type, message.DataSchemaVersion)
-	if err != nil {
-		return nil, nil, err
-	}
-	err = v.verifyHeaders(message.Metadata.Headers)
-	if err != nil {
-		return nil, nil, err
-	}
-	schema := v.encoder.EncodeMessageType(message.Type, message.DataSchemaVersion)
-	metaAttrs := MetaAttributes{
-		message.Metadata.Timestamp,
-		message.Metadata.Publisher,
-		message.Metadata.Headers,
-		message.ID,
-		schema,
-		v.currentFormatVersion,
-	}
-	messagePayload, err := v.encoder.EncodeData(message.Data, v.useTransportMessageAttributes, metaAttrs)
-	if err != nil {
-		return nil, nil, err
-	}
-	var attributes map[string]string
-	if v.useTransportMessageAttributes {
-		attributes = v.encodeMetaAttributes(metaAttrs)
-	} else {
-		attributes = message.Metadata.Headers
-	}
+	messagePayload, attributes, err := v.getPayloadandAttributes(message)
 	// validate payload from scratch before publishing
 	_, err = v.deserialize(messagePayload, attributes, nil)
 	if err != nil {
