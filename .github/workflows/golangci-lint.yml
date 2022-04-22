@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go_version: ['1.16']
+        go_version: ['1.17']
     steps:
       - id: setup
         name: Setup Go

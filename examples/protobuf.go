@@ -37,7 +37,7 @@ func (h *protobufHandler) userCreated(ctx context.Context, message *hedwig.Messa
 }
 
 func protobufDataCreator() interface{} {
-	return &UserCreatedV1{UserId: "U_123"}
+	return &UserCreatedV1{UserId: proto.String("U_123")}
 }
 
 func protobufRegistry(fakeCallbackErr string) hedwig.CallbackRegistry {

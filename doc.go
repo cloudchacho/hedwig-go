@@ -19,92 +19,105 @@ Provisioning
 
 Hedwig works on SQS and SNS as backing queues. Before you can publish/consume messages, you need to provision the
 required infra. This may be done manually, or, preferably, using Terraform. Hedwig provides tools to make infra
-configuration easier: see Terraform (https://github.com/cloudchacho/hedwig-terraform) and
-Hedwig Terraform Generator (https://github.com/cloudchacho/hedwig-terraform-generator) for further details.
+configuration easier: see [Terraform Google](https://github.com/cloudchacho/terraform-google-hedwig) for further
+details.
 
 Initialization
 
-Define a few required settings. Please see the settings struct for the additional optional parameters.
+Create a protobuf schema and save as ``schema.proto``:
 
-    serializer, err := hedwig.newMessageValidator("schema.json")
+	syntax = "proto2";
+
+	package main;
+
+	import "hedwig/protobuf/options.proto";
+
+	option go_package = "example.com/hedwig;main";
+
+	message SendEmailV1 {
+		option (hedwig.message_options).major_version = 1;
+		option (hedwig.message_options).minor_version = 0;
+		option (hedwig.message_options).message_type = "email.send";
+
+		string to = 1;
+		string message = 1;
+	}
+
+Clone hedwig Options definition file and compile your schema:
+
+	git clone github.com/cloudchacho/hedwig /usr/local/lib/protobuf/include/hedwig/
+	protoc -I/usr/local/lib/protobuf/include -I. --go_out=. schema.proto
+
+In publisher application, initialize the publisher:
+
+    settings := aws.Settings {
+        AWSAccessKey:    <YOUR AWS KEY>,
+        AWSAccountID:    <YOUR AWS ACCOUNT ID>,
+        AWSRegion:       <YOUR AWS REGION>,
+        AWSSecretKey:    <YOUR AWS SECRET KEY>,
+        AWSSessionToken: <YOUR AWS SESSION TOKEN>,
+    }
+    backend := aws.NewBackend(settings, nil)
+	encoderDecoder := protobuf.NewMessageEncoderDecoder([]proto.Message{&SendEmailV1{}})
+    routing := map[hedwig.MessageRouteKey]string{
+        {
+            MessageType:    "email.send",
+            MessageMajorVersion: 1,
+        }: "send_email",
+    }
+    publisher := hedwig.NewPublisher(backend, encoderDecoder, encoderDecoder, routing)
+
+And finally, send a message:
+
+    headers := map[string]string{}
+    msg, err := hedwig.NewMessage("email.send", "1.0", headers, data, "myapp")
     if err != nil {
-        panic("Failed to create serializer")
+        return err
     }
-    settings := &hedwig.Settings{
-        AWSAccessKey:              <YOUR AWS KEY>,
-        AWSAccountID:              <YOUR AWS ACCOUNT ID>,
-        AWSRegion:                 <YOUR AWS REGION>,
-        AWSSecretKey:              <YOUR AWS SECRET KEY>,
-        AWSSessionToken:           <YOUR AWS SESSION TOKEN>,
-        Publisher:                 "MYAPP",
-        QueueName:                 "DEV-MYAPP",
-        MessageRouting:            map[hedwig.MessageTypeMajorVersion]string{
-            hedwig.MessageTypeMajorVersion{
-                MessageType:    "email.send",
-    		        MajorVersion: 1,
-    	      }: "send_email",
-        },
-        Validator:                 serializer,
-    }
+    err := publisher.Publish(context.Background(), msg)
 
-Schema
+If you want to include a custom headers with the message (for example, you can include a request_id field
+for cross-application tracing), you can pass it in additional parameter headers.
 
-The schema file must be a JSON-Schema draft v4 schema. There’s a few more restrictions in addition to being a valid schema:
+In consumer application, define your callback, which are simple functions that accept a context and `*hedwig.Message`.
 
-  - There must be a top-level key called `schemas`. The value must be an object.
-  - `schemas`: The keys of this object must be message types. The value must be an object.
-  - `schemas/<message_type>`: The keys of this object must be major version patterns for this message type. The value must be an object.
-  - `schemas/<message_type>/<major_version>.*`: This object must represent the data schema for given message type, and major version. Any minor version updates must be applied in-place, and must be non-breaking per semantic versioning.
-  - Optionally, a key `x-versions` may be used to list full versions under a major version.
-
-Note that the schema file only contains definitions for major versions. This is by design since minor version MUST be
-
-Optionally, a key `x-versions` may be used to list full versions under a major version.
-
-For an example, see test hedwig schema: https://github.com/cloudchacho/hedwig-go/blob/master/hedwig/schema.json.
-
-Callbacks
-
-Callbacks are simple functions that accept a context and a hedwig.Message struct.
-
-    func HandleSendEmail(ctx context.Context, message *hedwig.Message) error {
-        // Send email
+    // Handler
+    func HandleSendEmail(ctx context.Context, msg *hedwig.Message) error {
+        to := msg.data.(*SendEmailV1).GetTo()
+		// actually send email
     }
 
 You can access the data map using message.data as well as custom headers using message.Metadata.Headers
 and other metadata fields as described in the struct definition.
 
-Publisher
+And start the consumer:
 
-Assuming the Publisher has already been initialized, You can publish messages like so:
-
-    headers := map[string]string{}
-    msg, err := hedwig.NewMessage(settings, "email.send", "1.0", headers, data)
-    if err != nil {
-        return err
+    settings := aws.Settings {
+        AWSAccessKey:    <YOUR AWS KEY>,
+        AWSAccountID:    <YOUR AWS ACCOUNT ID>,
+        AWSRegion:       <YOUR AWS REGION>,
+        AWSSecretKey:    <YOUR AWS SECRET KEY>,
+        AWSSessionToken: <YOUR AWS SESSION TOKEN>,
     }
-    Publisher.Publish(ctx, msg)
-
-If you want to include a custom headers with the message (for example, you can include a request_id field
-for cross-application tracing), you can pass it in additional parameter headers.
-
-Consumer
-
-A Consumer for SQS based workers can be started as following:
-
-    Consumer := hedwig.NewQueueConsumer(sessionCache, settings)
-    Consumer.ListenForMessages(ctx, &hedwig.ListenRequest{...})
+    backend := aws.NewBackend(settings, nil)
+	encoderDecoder := protobuf.NewMessageEncoderDecoder([]proto.Message{&SendEmailV1{}})
+    registry := hedwig.CallbackRegistry{{"email.send", 1}: HandleSendEmail}
+    consumer := hedwig.NewConsumer(backend, encoderDecoder, nil, registry)
+    err := consumer.ListenForMessages(context.Background(), hedwig.ListenRequest{})
 
 This is a blocking function.
 
-A Consumer for Lambda based workers can be started as following:
+For more complete code, see examples.
 
-    Consumer = hedwig.NewLambdaConsumer(sessionCache, settings)
-    Consumer.HandleLambdaEvent(ctx, snsEvent)
+Schema
 
-where snsEvent is the event provided by AWS to your Lambda
-function as described in AWS documentation: https://docs.aws.amazon.com/lambda/latest/dg/eventsources.html#eventsources-sns.
-The lambda event handler can also be passed into the AWS Lambda SDK as follows:
+A schema defines the constraints of the data that your message can contain. For example, you may want to define that
+your messages are valid JSON values with a specific key. Hedwig provides schema validation so that your application
+doesn't have to think about whether messages are valid.
 
-    lambda.Start(Consumer.HandleLambdaEvent)
+Note that the schema file only contains definitions for major versions. This is by design since minor version MUST be
+backwards compatible.
+
+Currently, protobuf and json-schema are supported out of the box, but you can plug in your own validator.
+
 */
