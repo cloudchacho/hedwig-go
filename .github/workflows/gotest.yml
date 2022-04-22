@@ -43,4 +43,4 @@ jobs:
         name: Upload coverage to Codecov
         uses: codecov/codecov-action@v1
         with:
-          files: ./coverage.txt,./aws/coverage.txt,./jsonschema/coverage.txt,./protobuf/coverage.txt
+          files: ./coverage.txt,./aws/coverage.txt,./gcp/coverage.txt,./jsonschema/coverage.txt,./protobuf/coverage.txt

@@ -29,9 +29,8 @@ Hedwig utilizes SNS for fan-out configuration. A publisher publishes messages on
 
 Hedwig works on SQS and SNS as backing queues. Before you can publish/consume messages, you need to provision the
 required infra. This may be done manually, or, preferably, using Terraform. Hedwig provides tools to make infra
-configuration easier: see [Terraform](https://github.com/cloudchacho/hedwig-terraform) and
-[Hedwig Terraform Generator](https://github.com/cloudchacho/hedwig-terraform-generator) for further details.
-
+configuration easier: see [Terraform Google](https://github.com/cloudchacho/terraform-google-hedwig) for further 
+details.
 
 ## Quick Start
 

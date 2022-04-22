@@ -14,7 +14,7 @@ import (
 
 func runConsumer(
 	backend hedwig.ConsumerBackend, decoder hedwig.Decoder, registry hedwig.CallbackRegistry,
-	instrumenter hedwig.Instrumenter, fakeCallbackErr string) {
+	instrumenter hedwig.Instrumenter) {
 	consumer := hedwig.NewQueueConsumer(backend, decoder, nil, registry)
 	consumer.WithInstrumenter(instrumenter)
 	err := consumer.ListenForMessages(context.Background(), hedwig.ListenRequest{})
@@ -110,7 +110,7 @@ func main() {
 
 	switch os.Args[1] {
 	case "consumer":
-		runConsumer(consumerBackend, encoderDecoder, registry, instrumenter, fakeCallbackErr)
+		runConsumer(consumerBackend, encoderDecoder, registry, instrumenter)
 	case "publisher":
 		runPublisher(publisherBackend, encoderDecoder, instrumenter, dataCreator)
 	case "requeue-dlq":
