@@ -31,6 +31,10 @@ func (f *fakeEncoder) EncodeMessageType(messageType string, version *semver.Vers
 	return args.String(0)
 }
 
+func (f *fakeEncoder) IsBinary() bool {
+	return false
+}
+
 type fakeDecoder struct {
 	mock.Mock
 }

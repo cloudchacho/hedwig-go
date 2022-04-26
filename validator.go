@@ -1,6 +1,7 @@
 package hedwig
 
 import (
+	"encoding/binary"
 	"fmt"
 	"strconv"
 	"strings"
@@ -20,17 +21,11 @@ type MetaAttributes struct {
 	FormatVersion *semver.Version
 }
 
-type FirehoseValidator interface {
-	encodeFirehosePayload(string, *semver.Version, map[string]string, []byte) ([]byte, error)
-	extractFirehoseData([]byte) (MetaAttributes, []byte, error)
-}
-
 type messageValidator struct {
 	encoder                       Encoder
 	decoder                       Decoder
 	currentFormatVersion          *semver.Version
 	useTransportMessageAttributes bool
-	firehoseValidator FirehoseValidator
 }
 
 func (v *messageValidator) getPayloadandAttributes(message *Message) ([]byte, map[string]string, error) {
@@ -65,26 +60,41 @@ func (v *messageValidator) getPayloadandAttributes(message *Message) ([]byte, ma
 }
 
 func (v *messageValidator) DeserializeFirehose(line []byte) (*Message, error) {
-	metaAttrs, messagePayload, err := v.firehoseValidator.extractFirehoseData(line)
-	attributes :=  v.encodeMetaAttributes(metaAttrs)
-	if err != nil {
-		return nil, err
+	// defer reset of useTransportMessageAttributes
+	defer v.withUseTransportMessageAttributes(v.useTransportMessageAttributes)
+	v.withUseTransportMessageAttributes(false)
+	var messagePayload []byte
+	if v.encoder.IsBinary() {
+		// TLV format: 8 bytes for size of message, n bytes for the actual message
+		copy(messagePayload, line[8:])
+	} else {
+		// last char is new line, skip that
+		copy(messagePayload, line[:len(line)-1])
 	}
-	return v.deserialize(messagePayload, attributes, nil)
+	return v.deserialize(messagePayload, map[string]string{}, nil)
 }
 
 func (v *messageValidator) SerializeFirehose(message *Message) ([]byte, error) {
-	messagePayload, attributes, err := v.getPayloadandAttributes(message)
+	// defer reset of useTransportMessageAttributes
+	defer v.withUseTransportMessageAttributes(v.useTransportMessageAttributes)
+	v.withUseTransportMessageAttributes(false)
+	messagePayload, _, err := v.serialize(message)
 	if err != nil {
 		return nil, err
 	}
-	// encode to fierhose format
-	encoded, err := v.firehoseValidator.encodeFirehosePayload(message.Type, message.DataSchemaVersion, attributes, messagePayload)
-	if err != nil {
-		return nil, err
+	var encodedMessage []byte
+	if v.encoder.IsBinary() {
+		// TLV format: 8 bytes for size of message, n bytes for the actual message
+		encodedMessage = make([]byte, 8+len(messagePayload))
+		binary.LittleEndian.PutUint64(encodedMessage, uint64(len(messagePayload)))
+		copy(encodedMessage[8:], messagePayload)
+	} else {
+		encodedMessage = make([]byte, 1+len(messagePayload))
+		copy(encodedMessage, messagePayload)
+		encodedMessage[len(encodedMessage)-1] = byte('\n')
 	}
-	_, err = v.DeserializeFirehose(encoded)
-	return encoded, err
+	_, err = v.DeserializeFirehose(encodedMessage)
+	return encodedMessage, err
 }
 
 // decodeMetaAttributes decodes message transport attributes as MetaAttributes
@@ -151,6 +161,9 @@ func (v *messageValidator) encodeMetaAttributes(metaAttrs MetaAttributes) map[st
 
 func (v *messageValidator) serialize(message *Message) ([]byte, map[string]string, error) {
 	messagePayload, attributes, err := v.getPayloadandAttributes(message)
+	if err != nil {
+		return nil, nil, err
+	}
 	// validate payload from scratch before publishing
 	_, err = v.deserialize(messagePayload, attributes, nil)
 	if err != nil {

@@ -87,6 +87,9 @@ type Encoder interface {
 
 	// VerifyKnownMinorVersion checks that message version is known to us
 	VerifyKnownMinorVersion(messageType string, version *semver.Version) error
+
+	// True if encoding format is binary
+	IsBinary() bool
 }
 
 // EncoderDecoder can both encode and decode messages
