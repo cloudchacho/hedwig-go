@@ -302,6 +302,10 @@ func (ed *EncoderDecoder) EncodeMessageType(messageType string, version *semver.
 	return fmt.Sprintf("%s#/schemas/%s/%d.%d", ed.schemaRoot(), messageType, version.Major(), version.Minor())
 }
 
+func (ed *EncoderDecoder) IsBinary() bool {
+	return false
+}
+
 // DecodeMessageType decodes message type from meta attributes
 func (ed *EncoderDecoder) DecodeMessageType(schema string) (string, *semver.Version, error) {
 	if !strings.HasPrefix(schema, ed.schemaRoot()) {
