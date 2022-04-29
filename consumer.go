@@ -115,7 +115,10 @@ func (c *QueueConsumer) ListenForMessages(ctx context.Context, request ListenReq
 						c.processMessage(ctx, receivedMessage.Payload, receivedMessage.Attributes, receivedMessage.ProviderMetadata)
 					}
 					return
-				case receivedMessage := <-messageCh:
+				case receivedMessage, closed := <-messageCh:
+					if closed {
+						return
+					}
 					c.processMessage(ctx, receivedMessage.Payload, receivedMessage.Attributes, receivedMessage.ProviderMetadata)
 				}
 			}
