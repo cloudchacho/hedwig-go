@@ -29,7 +29,7 @@ func (h *protobufHandler) userCreated(ctx context.Context, message *hedwig.Messa
 	if h.fakeCallbackErr != "" {
 		return errors.New(h.fakeCallbackErr)
 	}
-	userID := message.Data.(*UserCreatedV1).UserId
+	userID := *message.Data.(*UserCreatedV1).UserId
 	span := trace.SpanFromContext(ctx)
 	fmt.Printf("[%s/%s] Receive user created message with id %s and user id %s, request id %s and provider metadata %+v\n",
 		span.SpanContext().TraceID(), span.SpanContext().SpanID(), message.ID, userID, message.Metadata.Headers["request_id"], message.Metadata.ProviderMetadata)
