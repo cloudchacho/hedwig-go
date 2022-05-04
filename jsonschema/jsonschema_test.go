@@ -297,6 +297,11 @@ func (s *EncoderTestSuite) TestNew() {
 	assert.NotNil(s.T(), s.encoder)
 }
 
+func (s *EncoderTestSuite) TestBinary() {
+	s.Equal(s.encoder.IsBinary(), false)
+	assert.NotNil(s.T(), s.encoder)
+}
+
 type EncoderTestSuite struct {
 	suite.Suite
 	encoder *EncoderDecoder

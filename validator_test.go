@@ -346,6 +346,25 @@ func (s *ValidatorTestSuite) TestSerializeFirehose() {
 	s.Equal(res, expected)
 }
 
+func (s *ValidatorTestSuite) TestSerializeFirehoseError() {
+	s.encoder.On("VerifyKnownMinorVersion", s.message.Type, s.message.DataSchemaVersion).Return(errors.New("bad version"))
+	schema := "user-created/1.0"
+	s.encoder.On("EncodeMessageType", s.message.Type, s.message.DataSchemaVersion).Return(schema)
+
+	payload := []byte("user-created/1.0 C_123")
+
+	s.encoder.On("EncodeData", s.message.Data, false, s.metaAttrs).
+		Return(payload, nil)
+
+	s.decoder.On("DecodeMessageType", schema).Return(s.message.Type, s.message.DataSchemaVersion, nil)
+	s.decoder.On("DecodeData", s.message.Type, s.message.DataSchemaVersion, payload).
+		Return(s.message.Data, nil)
+	s.decoder.On("ExtractData", payload, map[string]string{"foo": "bar"}).Return(s.metaAttrs, payload, nil)
+	s.decoder.On("ExtractData", payload, map[string]string{}).Return(s.metaAttrs, payload, nil)
+	_, err := s.validator.SerializeFirehose(s.message)
+	s.EqualError(err, "bad version")
+}
+
 func (s *ValidatorTestSuite) TestDeSerializeFirehose() {
 	// first 8 bytes is length of message (22) in this case
 	payload := []byte("\x16\x00\x00\x00\x00\x00\x00\x00user-created/1.0 C_123")
