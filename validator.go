@@ -65,9 +65,11 @@ func (v *messageValidator) DeserializeFirehose(line []byte) (*Message, error) {
 	v.withUseTransportMessageAttributes(false)
 	var messagePayload []byte
 	if v.encoder.IsBinary() {
+		messagePayload = make([]byte, len(line)-8)
 		// TLV format: 8 bytes for size of message, n bytes for the actual message
 		copy(messagePayload, line[8:])
 	} else {
+		messagePayload = make([]byte, len(line)-1)
 		// last char is new line, skip that
 		copy(messagePayload, line[:len(line)-1])
 	}

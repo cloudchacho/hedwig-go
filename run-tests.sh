@@ -7,6 +7,12 @@ cleanup() {
   wait "${emulator_pid}" || true
 }
 
+test_opts="$* ${TEST_OPTS}"
+
+if [ ! -z "$test_opts" ]; then
+    test_opts="-run ${test_opts}"
+fi
+
 setup_pubsub_emulator() {
   gcloud components install beta pubsub-emulator
   gcloud beta emulators pubsub start --project emulator-project > /dev/null 2>&1 &
@@ -20,4 +26,4 @@ setup_pubsub_emulator() {
 }
 
 setup_pubsub_emulator
-go test -cover -coverprofile coverage.txt -v -race ./...
+go test ${test_opts} -cover -coverprofile coverage.txt -v -race ./...

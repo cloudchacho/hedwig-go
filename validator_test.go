@@ -32,7 +32,7 @@ func (f *fakeEncoder) EncodeMessageType(messageType string, version *semver.Vers
 }
 
 func (f *fakeEncoder) IsBinary() bool {
-	return false
+	return true
 }
 
 type fakeDecoder struct {
@@ -323,6 +323,49 @@ func (s *ValidatorTestSuite) TestDecodeMetaAttrsValidation() {
 			s.Error(err)
 		})
 	}
+}
+
+func (s *ValidatorTestSuite) TestSerializeFirehose() {
+	s.encoder.On("VerifyKnownMinorVersion", s.message.Type, s.message.DataSchemaVersion).Return(nil)
+	schema := "user-created/1.0"
+	s.encoder.On("EncodeMessageType", s.message.Type, s.message.DataSchemaVersion).Return(schema)
+
+	payload := []byte("user-created/1.0 C_123")
+
+	s.encoder.On("EncodeData", s.message.Data, false, s.metaAttrs).
+		Return(payload, nil)
+
+	s.decoder.On("DecodeMessageType", schema).Return(s.message.Type, s.message.DataSchemaVersion, nil)
+	s.decoder.On("DecodeData", s.message.Type, s.message.DataSchemaVersion, payload).
+		Return(s.message.Data, nil)
+	s.decoder.On("ExtractData", payload, map[string]string{"foo": "bar"}).Return(s.metaAttrs, payload, nil)
+	s.decoder.On("ExtractData", payload, map[string]string{}).Return(s.metaAttrs, payload, nil)
+	res, err := s.validator.SerializeFirehose(s.message)
+	s.Nil(err)
+	expected := []byte("\x16\x00\x00\x00\x00\x00\x00\x00user-created/1.0 C_123")
+	s.Equal(res, expected)
+}
+
+func (s *ValidatorTestSuite) TestDeSerializeFirehose() {
+	// first 8 bytes is length of message (22) in this case
+	payload := []byte("\x16\x00\x00\x00\x00\x00\x00\x00user-created/1.0 C_123")
+	schema := "user-created/1.0"
+
+	s.encoder.On("VerifyKnownMinorVersion", s.message.Type, s.message.DataSchemaVersion).Return(nil)
+	s.encoder.On("EncodeMessageType", s.message.Type, s.message.DataSchemaVersion).Return(schema)
+	s.encoder.On("EncodeData", s.message.Data, true, s.metaAttrs).
+		Return(payload, nil)
+
+	s.decoder.On("ExtractData", payload[8:], map[string]string{}).Return(s.metaAttrs, payload, nil)
+	s.decoder.On("DecodeMessageType", schema).Return(s.message.Type, s.message.DataSchemaVersion, nil)
+	s.decoder.On("DecodeData", s.message.Type, s.message.DataSchemaVersion, payload).
+		Return(s.message.Data, nil)
+	line, _, err := s.validator.serialize(s.message)
+	s.Nil(err)
+	res, err := s.validator.DeserializeFirehose(line)
+	s.Nil(err)
+	s.Equal(res, s.message)
+
 }
 
 func (s *ValidatorTestSuite) TestNew() {
