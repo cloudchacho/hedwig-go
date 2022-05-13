@@ -28,7 +28,8 @@ type messageValidator struct {
 	useTransportMessageAttributes bool
 }
 
-func (v *messageValidator) getPayloadandAttributes(message *Message) ([]byte, map[string]string, error) {
+func (v *messageValidator) getPayloadandAttributes(message *Message, runWithTransportMessageAttributes bool) ([]byte, map[string]string, error) {
+	shouldRunWithMessageAttributes := v.useTransportMessageAttributes || runWithTransportMessageAttributes
 	err := v.encoder.VerifyKnownMinorVersion(message.Type, message.DataSchemaVersion)
 	if err != nil {
 		return nil, nil, err
@@ -46,12 +47,12 @@ func (v *messageValidator) getPayloadandAttributes(message *Message) ([]byte, ma
 		schema,
 		v.currentFormatVersion,
 	}
-	messagePayload, err := v.encoder.EncodeData(message.Data, v.useTransportMessageAttributes, metaAttrs)
+	messagePayload, err := v.encoder.EncodeData(message.Data, shouldRunWithMessageAttributes, metaAttrs)
 	if err != nil {
 		return nil, nil, err
 	}
 	var attributes map[string]string
-	if v.useTransportMessageAttributes {
+	if shouldRunWithMessageAttributes {
 		attributes = v.encodeMetaAttributes(metaAttrs)
 	} else {
 		attributes = message.Metadata.Headers
@@ -73,14 +74,14 @@ func (v *messageValidator) DeserializeFirehose(line []byte) (*Message, error) {
 		// last char is new line, skip that
 		copy(messagePayload, line[:len(line)-1])
 	}
-	return v.deserialize(messagePayload, map[string]string{}, nil)
+	return v.deserialize(messagePayload, map[string]string{}, nil, true)
 }
 
 func (v *messageValidator) SerializeFirehose(message *Message) ([]byte, error) {
 	// defer reset of useTransportMessageAttributes
 	defer v.withUseTransportMessageAttributes(v.useTransportMessageAttributes)
 	v.withUseTransportMessageAttributes(false)
-	messagePayload, _, err := v.serialize(message)
+	messagePayload, _, err := v.serialize(message, true)
 	if err != nil {
 		return nil, err
 	}
@@ -161,24 +162,24 @@ func (v *messageValidator) encodeMetaAttributes(metaAttrs MetaAttributes) map[st
 	return attributes
 }
 
-func (v *messageValidator) serialize(message *Message) ([]byte, map[string]string, error) {
-	messagePayload, attributes, err := v.getPayloadandAttributes(message)
+func (v *messageValidator) serialize(message *Message, runWithTransportMessageAttributes bool) ([]byte, map[string]string, error) {
+	messagePayload, attributes, err := v.getPayloadandAttributes(message, runWithTransportMessageAttributes)
 	if err != nil {
 		return nil, nil, err
 	}
 	// validate payload from scratch before publishing
-	_, err = v.deserialize(messagePayload, attributes, nil)
+	_, err = v.deserialize(messagePayload, attributes, nil, runWithTransportMessageAttributes)
 	if err != nil {
 		return nil, nil, err
 	}
 	return messagePayload, attributes, nil
 }
 
-func (v *messageValidator) deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}) (*Message, error) {
+func (v *messageValidator) deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}, runWithTransportMessageAttributes bool) (*Message, error) {
 	var metaAttrs MetaAttributes
 	var data interface{}
 	var err error
-	if v.useTransportMessageAttributes {
+	if v.useTransportMessageAttributes || runWithTransportMessageAttributes {
 		metaAttrs, err = v.decodeMetaAttributes(attributes)
 		if err != nil {
 			return nil, err

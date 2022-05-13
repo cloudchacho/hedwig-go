@@ -17,7 +17,7 @@ type Publisher struct {
 
 // Publish a message on Hedwig
 func (p *Publisher) Publish(ctx context.Context, message *Message) (string, error) {
-	payload, attributes, err := p.serializer.serialize(message)
+	payload, attributes, err := p.serializer.serialize(message, false)
 	if err != nil {
 		return "", err
 	}
@@ -46,7 +46,7 @@ func (p *Publisher) WithInstrumenter(instrumenter Instrumenter) {
 }
 
 type serializer interface {
-	serialize(message *Message) ([]byte, map[string]string, error)
+	serialize(message *Message, runWithTransportMessageAttributes bool) ([]byte, map[string]string, error)
 	withUseTransportMessageAttributes(useTransportMessageAttributes bool)
 }
 
