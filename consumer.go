@@ -41,7 +41,6 @@ func (c *Consumer) processMessage(ctx context.Context, payload []byte, attribute
 	}
 
 	var acked bool
-	//loggingFields := LoggingFields{}
 
 	// must ack or nack message, otherwise receive call never returns even on context cancelation
 	defer func() {
@@ -62,8 +61,6 @@ func (c *Consumer) processMessage(ctx context.Context, payload []byte, attribute
 	if c.instrumenter != nil {
 		c.instrumenter.OnMessageDeserialized(ctx, message)
 	}
-
-	//loggingFields = LoggingFields{}
 
 	callbackKey := MessageTypeMajorVersion{message.Type, uint(message.DataSchemaVersion.Major())}
 	var callback CallbackFunction
