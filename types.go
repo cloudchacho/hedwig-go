@@ -1,9 +1,5 @@
 package hedwig
 
-import (
-	"context"
-)
-
 // MessageTypeMajorVersion is a tuple of message typa and major version
 type MessageTypeMajorVersion struct {
 	// Message type
@@ -11,6 +7,3 @@ type MessageTypeMajorVersion struct {
 	// Message major version
 	MajorVersion uint
 }
-
-// GetLoggerFunc returns the logger object
-type GetLoggerFunc func(ctx context.Context) Logger

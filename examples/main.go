@@ -6,16 +6,21 @@ import (
 	"os"
 	"strings"
 
+	"examples/contextlogger"
+	hedwiglogrus "examples/logrus"
+	hedwigzap "examples/zap"
+	hedwigzerolog "examples/zerolog"
 	"github.com/cloudchacho/hedwig-go"
 	hedwigOtel "github.com/cloudchacho/hedwig-go/otel"
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func runConsumer(
 	backend hedwig.ConsumerBackend, decoder hedwig.Decoder, registry hedwig.CallbackRegistry,
-	instrumenter hedwig.Instrumenter) {
-	consumer := hedwig.NewQueueConsumer(backend, decoder, nil, registry)
+	instrumenter hedwig.Instrumenter, logger hedwig.Logger) {
+	consumer := hedwig.NewQueueConsumer(backend, decoder, logger, registry)
 	consumer.WithInstrumenter(instrumenter)
 	err := consumer.ListenForMessages(context.Background(), hedwig.ListenRequest{})
 	if err != nil {
@@ -25,7 +30,7 @@ func runConsumer(
 
 func runPublisher(
 	backend hedwig.PublisherBackend, encoderDecoder hedwig.EncoderDecoder, instrumenter hedwig.Instrumenter,
-	dataCreator func() interface{}) {
+	dataCreator func() interface{}, logger hedwig.Logger) {
 	ctx := context.Background()
 	tp := sdktrace.NewTracerProvider()
 	tracer := tp.Tracer("github.com/cloudchacho/hedwig-go/examples")
@@ -48,16 +53,23 @@ func runPublisher(
 	if err != nil {
 		panic(fmt.Sprintf("Failed to publish message: %v", err))
 	}
-	fmt.Printf("[%s/%s], Published message with id %s successfully with publish id: %s\n",
-		span.SpanContext().TraceID(), span.SpanContext().SpanID(), message.ID, messageID)
+	logger.Info(ctx, "Published message successfully", "id", message.ID, "publish_id", messageID)
 }
 
-func requeueDLQ(backend hedwig.ConsumerBackend, decoder hedwig.Decoder, instrumenter hedwig.Instrumenter) {
-	consumer := hedwig.NewQueueConsumer(backend, decoder, nil, nil)
+func requeueDLQ(backend hedwig.ConsumerBackend, decoder hedwig.Decoder, instrumenter hedwig.Instrumenter, logger hedwig.Logger) {
+	consumer := hedwig.NewQueueConsumer(backend, decoder, logger, nil)
 	consumer.WithInstrumenter(instrumenter)
 	err := consumer.RequeueDLQ(context.Background(), hedwig.ListenRequest{})
 	if err != nil {
 		panic(fmt.Sprintf("Failed to requeue messages: %v", err))
+	}
+}
+
+func extractor(ctx context.Context) []interface{} {
+	spanCtx := trace.SpanContextFromContext(ctx)
+	return []interface{}{
+		"traceId", spanCtx.TraceID().String(),
+		"spanId", spanCtx.SpanID().String(),
 	}
 }
 
@@ -68,6 +80,7 @@ func main() {
 	var registry hedwig.CallbackRegistry
 	var propagator propagation.TextMapPropagator
 	var dataCreator func() interface{}
+	var logger hedwig.Logger
 
 	isProtobuf := false
 	if isProtobufStr, found := os.LookupEnv("HEDWIG_PROTOBUF"); found {
@@ -81,24 +94,49 @@ func main() {
 	if fakeConsumerErrStr, found := os.LookupEnv("FAKE_CALLBACK_ERROR"); found {
 		fakeCallbackErr = fakeConsumerErrStr
 	}
+	loggerName := os.Getenv("HEDWIG_LOGGER")
+	if loggerName == "" {
+		loggerName = "context/zerolog"
+	}
+	useContextLogger := false
+	if strings.HasPrefix(loggerName, "context/") {
+		useContextLogger = true
+		loggerName = strings.TrimPrefix(loggerName, "context/")
+	}
+	switch loggerName {
+	case "zerolog":
+		logger = hedwigzerolog.Logger{}
+	case "zap":
+		logger = hedwigzap.Logger{}
+	case "logrus":
+		logger = hedwiglogrus.Logger{}
+	default:
+		panic(fmt.Sprintf("unknown logger: %s", loggerName))
+	}
+	if useContextLogger {
+		logger = contextlogger.Logger{
+			Logger:    logger,
+			Extractor: extractor,
+		}
+	}
 
 	if isProtobuf {
 		encoderDecoder = protobufEncoderDecoder()
-		registry = protobufRegistry(fakeCallbackErr)
+		registry = protobufRegistry(fakeCallbackErr, logger)
 		dataCreator = protobufDataCreator
 	} else {
 		encoderDecoder = jsonSchemaEncoderDecoder()
-		registry = jsonSchemaRegistry(fakeCallbackErr)
+		registry = jsonSchemaRegistry(fakeCallbackErr, logger)
 		dataCreator = jsonSchemaDataCreator
 	}
 
 	if backendName == "aws" {
-		b := awsBackend()
+		b := awsBackend(logger)
 		consumerBackend = b
 		publisherBackend = b
 		propagator = awsPropagator()
 	} else {
-		b := gcpBackend()
+		b := gcpBackend(logger)
 		consumerBackend = b
 		publisherBackend = b
 		propagator = gcpPropagator()
@@ -110,11 +148,11 @@ func main() {
 
 	switch os.Args[1] {
 	case "consumer":
-		runConsumer(consumerBackend, encoderDecoder, registry, instrumenter)
+		runConsumer(consumerBackend, encoderDecoder, registry, instrumenter, logger)
 	case "publisher":
-		runPublisher(publisherBackend, encoderDecoder, instrumenter, dataCreator)
+		runPublisher(publisherBackend, encoderDecoder, instrumenter, dataCreator, logger)
 	case "requeue-dlq":
-		requeueDLQ(consumerBackend, encoderDecoder, instrumenter)
+		requeueDLQ(consumerBackend, encoderDecoder, instrumenter, logger)
 	default:
 		panic(fmt.Sprintf("unknown command: %s", os.Args[1]))
 	}

@@ -4,8 +4,8 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
-	uuid "github.com/satori/go.uuid"
 )
 
 type metadata struct {
@@ -65,7 +65,7 @@ func newMessageWithID(
 // NewMessage creates new Hedwig messages based off of message type and Schema version
 func NewMessage(dataType string, dataSchemaVersion string, headers map[string]string, data interface{}, publisherName string) (*Message, error) {
 	// Generate uuid for ID
-	msgUUID := uuid.NewV4()
+	msgUUID := uuid.New()
 	msgID := msgUUID.String()
 
 	if headers == nil {

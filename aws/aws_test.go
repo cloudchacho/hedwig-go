@@ -33,7 +33,7 @@ type fakeLog struct {
 	level   string
 	err     error
 	message string
-	fields  hedwig.LoggingFields
+	fields  []interface{}
 }
 
 type fakeLogger struct {
@@ -41,28 +41,22 @@ type fakeLogger struct {
 	logs []fakeLog
 }
 
-func (f *fakeLogger) Error(err error, message string, fields hedwig.LoggingFields) {
+func (f *fakeLogger) Error(_ context.Context, err error, message string, keyvals ...interface{}) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
-	f.logs = append(f.logs, fakeLog{"error", err, message, fields})
+	f.logs = append(f.logs, fakeLog{"error", err, message, keyvals})
 }
 
-func (f *fakeLogger) Warn(err error, message string, fields hedwig.LoggingFields) {
+func (f *fakeLogger) Info(_ context.Context, message string, keyvals ...interface{}) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
-	f.logs = append(f.logs, fakeLog{"warn", err, message, fields})
+	f.logs = append(f.logs, fakeLog{"info", nil, message, keyvals})
 }
 
-func (f *fakeLogger) Info(message string, fields hedwig.LoggingFields) {
+func (f *fakeLogger) Debug(_ context.Context, message string, keyvals ...interface{}) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
-	f.logs = append(f.logs, fakeLog{"info", nil, message, fields})
-}
-
-func (f *fakeLogger) Debug(message string, fields hedwig.LoggingFields) {
-	f.lock.Lock()
-	defer f.lock.Unlock()
-	f.logs = append(f.logs, fakeLog{"debug", nil, message, fields})
+	f.logs = append(f.logs, fakeLog{"debug", nil, message, keyvals})
 }
 
 type fakeValidator struct {
@@ -1377,9 +1371,6 @@ func (s *BackendTestSuite) SetupTest() {
 		AWSAccountID: "1234567890",
 		QueueName:    "DEV-MYAPP",
 	}
-	getLogger := func(_ context.Context) hedwig.Logger {
-		return logger
-	}
 	fakeSQS := &fakeSQS{}
 	fakeSNS := &fakeSNS{}
 	message, err := hedwig.NewMessage("user-created", "1.0", map[string]string{"foo": "bar"}, &fakeHedwigDataField{}, "myapp")
@@ -1390,7 +1381,7 @@ func (s *BackendTestSuite) SetupTest() {
 	payload := []byte(`{"vehicle_id": "C_123"}`)
 	attributes := map[string]string{"foo": "bar"}
 
-	s.backend = NewBackend(settings, getLogger)
+	s.backend = NewBackend(settings, logger)
 	s.backend.sqs = fakeSQS
 	s.backend.sns = fakeSNS
 	s.settings = settings

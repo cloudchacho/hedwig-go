@@ -26,7 +26,7 @@ type Consumer struct {
 	deserializer deserializer
 	instrumenter Instrumenter
 	registry     CallbackRegistry
-	getLogger    GetLoggerFunc
+	logger       Logger
 }
 
 type QueueConsumer struct {
@@ -41,21 +41,21 @@ func (c *Consumer) processMessage(ctx context.Context, payload []byte, attribute
 	}
 
 	var acked bool
-	loggingFields := LoggingFields{"message_body": payload}
+	//loggingFields := LoggingFields{}
 
 	// must ack or nack message, otherwise receive call never returns even on context cancelation
 	defer func() {
 		if !acked {
 			err := c.backend.NackMessage(ctx, providerMetadata)
 			if err != nil {
-				c.getLogger(ctx).Error(err, "Failed to nack message", loggingFields)
+				c.logger.Error(ctx, err, "Failed to nack message", "message_body", payload)
 			}
 		}
 	}()
 
 	message, err := c.deserializer.deserialize(payload, attributes, providerMetadata)
 	if err != nil {
-		c.getLogger(ctx).Error(err, "invalid message, unable to unmarshal", loggingFields)
+		c.logger.Error(ctx, err, "invalid message, unable to unmarshal", "message_body", payload)
 		return
 	}
 
@@ -63,14 +63,14 @@ func (c *Consumer) processMessage(ctx context.Context, payload []byte, attribute
 		c.instrumenter.OnMessageDeserialized(ctx, message)
 	}
 
-	loggingFields = LoggingFields{"message_id": message.ID, "type": message.Type, "version": message.DataSchemaVersion}
+	//loggingFields = LoggingFields{}
 
 	callbackKey := MessageTypeMajorVersion{message.Type, uint(message.DataSchemaVersion.Major())}
 	var callback CallbackFunction
 	var ok bool
 	if callback, ok = c.registry[callbackKey]; !ok {
 		msg := "no callback defined for message"
-		c.getLogger(ctx).Error(errors.New(msg), msg, loggingFields)
+		c.logger.Error(ctx, errors.New(msg), msg, "message_body", payload, "message_id", message.ID, "type", message.Type, "version", message.DataSchemaVersion)
 		return
 	}
 
@@ -79,14 +79,14 @@ func (c *Consumer) processMessage(ctx context.Context, payload []byte, attribute
 	case nil:
 		ackErr := c.backend.AckMessage(ctx, providerMetadata)
 		if ackErr != nil {
-			c.getLogger(ctx).Error(ackErr, "Failed to ack message", loggingFields)
+			c.logger.Error(ctx, ackErr, "Failed to ack message", "message_body", payload, "message_id", message.ID, "type", message.Type, "version", message.DataSchemaVersion)
 		} else {
 			acked = true
 		}
 	case ErrRetry:
-		c.getLogger(ctx).Debug("Retrying due to exception", loggingFields)
+		c.logger.Debug(ctx, "Retrying due to exception", "message_body", payload, "message_id", message.ID, "type", message.Type, "version", message.DataSchemaVersion)
 	default:
-		c.getLogger(ctx).Error(err, "Retrying due to unknown exception", loggingFields)
+		c.logger.Error(ctx, err, "Retrying due to unknown exception", "message_body", payload, "message_id", message.ID, "type", message.Type, "version", message.DataSchemaVersion)
 	}
 }
 
@@ -152,9 +152,8 @@ func (c *QueueConsumer) WithUseTransportMessageAttributes(useTransportMessageAtt
 }
 
 func (c *QueueConsumer) initDefaults() {
-	if c.getLogger == nil {
-		stdLogger := &StdLogger{}
-		c.getLogger = func(_ context.Context) Logger { return stdLogger }
+	if c.logger == nil {
+		c.logger = StdLogger{}
 	}
 }
 
@@ -179,14 +178,14 @@ type deserializer interface {
 	withUseTransportMessageAttributes(useTransportMessageAttributes bool)
 }
 
-func NewQueueConsumer(backend ConsumerBackend, decoder Decoder, getLogger GetLoggerFunc, registry CallbackRegistry) *QueueConsumer {
+func NewQueueConsumer(backend ConsumerBackend, decoder Decoder, logger Logger, registry CallbackRegistry) *QueueConsumer {
 	for key, callback := range registry {
 		registry[key] = wrapCallback(callback)
 	}
 
 	c := &QueueConsumer{
 		Consumer: Consumer{
-			getLogger:    getLogger,
+			logger:       logger,
 			registry:     registry,
 			backend:      backend,
 			deserializer: newMessageValidator(nil, decoder),
