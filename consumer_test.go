@@ -111,7 +111,7 @@ func (s *ConsumerTestSuite) TestProcessMessage() {
 	attributes := map[string]string{"request_id": "123"}
 	providerMetadata := struct{}{}
 	message := Message{Type: "user-created", DataSchemaVersion: semver.MustParse("1.0")}
-	s.deserializer.On("deserialize", payload, attributes, providerMetadata).
+	s.deserializer.On("deserialize", payload, attributes, providerMetadata, (*bool)(nil)).
 		Return(&message, nil)
 	s.callback.On("Callback", ctx, &message).
 		Return(nil)
@@ -128,7 +128,7 @@ func (s *ConsumerTestSuite) TestProcessMessageDeserializeFailure() {
 	payload := []byte(`foobar`)
 	attributes := map[string]string{"request_id": "123"}
 	providerMetadata := struct{}{}
-	s.deserializer.On("deserialize", payload, attributes, providerMetadata).
+	s.deserializer.On("deserialize", payload, attributes, providerMetadata, (*bool)(nil)).
 		Return((*Message)(nil), errors.New("invalid message"))
 	s.backend.On("NackMessage", ctx, providerMetadata).
 		Return(nil)
@@ -147,7 +147,7 @@ func (s *ConsumerTestSuite) TestProcessMessageCallbackFailure() {
 	attributes := map[string]string{"request_id": "123"}
 	providerMetadata := struct{}{}
 	message := Message{Type: "user-created", DataSchemaVersion: semver.MustParse("1.0")}
-	s.deserializer.On("deserialize", payload, attributes, providerMetadata).
+	s.deserializer.On("deserialize", payload, attributes, providerMetadata, (*bool)(nil)).
 		Return(&message, nil)
 	s.callback.On("Callback", ctx, &message).
 		Return(errors.New("failed to process"))
@@ -168,7 +168,7 @@ func (s *ConsumerTestSuite) TestProcessMessageCallbackPanic() {
 	attributes := map[string]string{"request_id": "123"}
 	providerMetadata := struct{}{}
 	message := Message{Type: "user-created", DataSchemaVersion: semver.MustParse("1.0")}
-	s.deserializer.On("deserialize", payload, attributes, providerMetadata).
+	s.deserializer.On("deserialize", payload, attributes, providerMetadata, (*bool)(nil)).
 		Return(&message, nil)
 	s.callback.On("Callback", ctx, &message).
 		Panic("failed to process")
@@ -189,7 +189,7 @@ func (s *ConsumerTestSuite) TestProcessMessageCallbackErrRetry() {
 	attributes := map[string]string{"request_id": "123"}
 	providerMetadata := struct{}{}
 	message := Message{Type: "user-created", DataSchemaVersion: semver.MustParse("1.0")}
-	s.deserializer.On("deserialize", payload, attributes, providerMetadata).
+	s.deserializer.On("deserialize", payload, attributes, providerMetadata, (*bool)(nil)).
 		Return(&message, nil)
 	s.callback.On("Callback", ctx, &message).
 		Return(ErrRetry)
@@ -210,7 +210,7 @@ func (s *ConsumerTestSuite) TestProcessMessageCallbackNotFound() {
 	attributes := map[string]string{"request_id": "123"}
 	providerMetadata := struct{}{}
 	message := Message{Type: "user-created", DataSchemaVersion: semver.MustParse("1.0")}
-	s.deserializer.On("deserialize", payload, attributes, providerMetadata).
+	s.deserializer.On("deserialize", payload, attributes, providerMetadata, (*bool)(nil)).
 		Return(&message, nil)
 	delete(s.consumer.registry, MessageTypeMajorVersion{"user-created", 1})
 	s.backend.On("NackMessage", ctx, providerMetadata).
@@ -230,7 +230,7 @@ func (s *ConsumerTestSuite) TestProcessNackFailure() {
 	attributes := map[string]string{"request_id": "123"}
 	providerMetadata := struct{}{}
 	message := Message{Type: "user-created", DataSchemaVersion: semver.MustParse("1.0")}
-	s.deserializer.On("deserialize", payload, attributes, providerMetadata).
+	s.deserializer.On("deserialize", payload, attributes, providerMetadata, (*bool)(nil)).
 		Return(&message, nil)
 	s.callback.On("Callback", ctx, &message).
 		Return(errors.New("failed to process"))
@@ -253,7 +253,7 @@ func (s *ConsumerTestSuite) TestProcessMessageAckFailure() {
 	attributes := map[string]string{"request_id": "123"}
 	providerMetadata := struct{}{}
 	message := Message{Type: "user-created", DataSchemaVersion: semver.MustParse("1.0")}
-	s.deserializer.On("deserialize", payload, attributes, providerMetadata).
+	s.deserializer.On("deserialize", payload, attributes, providerMetadata, (*bool)(nil)).
 		Return(&message, nil)
 	s.callback.On("Callback", ctx, &message).
 		Return(nil)
@@ -279,7 +279,7 @@ func (s *ConsumerTestSuite) TestProcessMessageFollowsParentTrace() {
 	instrumenter := &fakeInstrumenter{}
 	instrumentedConsumer := s.consumer.WithInstrumenter(instrumenter)
 	message := Message{Type: "user-created", DataSchemaVersion: semver.MustParse("1.0")}
-	s.deserializer.On("deserialize", payload, attributes, providerMetadata).
+	s.deserializer.On("deserialize", payload, attributes, providerMetadata, (*bool)(nil)).
 		Return(&message, nil)
 	s.callback.On("Callback", instrumentedCtx, &message).
 		Return(nil)
@@ -309,9 +309,9 @@ func (s *ConsumerTestSuite) TestListenForMessages() {
 	attributes2 := map[string]string{"request_id": "456"}
 	providerMetadata2 := struct{}{}
 	message := Message{Type: "user-created", DataSchemaVersion: semver.MustParse("1.0")}
-	s.deserializer.On("deserialize", payload, attributes, providerMetadata).
+	s.deserializer.On("deserialize", payload, attributes, providerMetadata, (*bool)(nil)).
 		Return(&message, nil)
-	s.deserializer.On("deserialize", payload2, attributes2, providerMetadata2).
+	s.deserializer.On("deserialize", payload2, attributes2, providerMetadata2, (*bool)(nil)).
 		Return(&message, nil)
 	s.callback.On("Callback", ctx, &message).
 		Return(nil).
@@ -360,8 +360,8 @@ type fakeDeserializer struct {
 	mock.Mock
 }
 
-func (f *fakeDeserializer) deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}, runWithTransportMessageAttributes bool) (*Message, error) {
-	args := f.Called(messagePayload, attributes, providerMetadata)
+func (f *fakeDeserializer) deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}, runWithTransportMessageAttributes *bool) (*Message, error) {
+	args := f.Called(messagePayload, attributes, providerMetadata, runWithTransportMessageAttributes)
 	return args.Get(0).(*Message), args.Error(1)
 }
 
