@@ -53,7 +53,7 @@ func runPublisher(
 	if err != nil {
 		panic(fmt.Sprintf("Failed to publish message: %v", err))
 	}
-	logger.Info(ctx, "Published message successfully", "id", message.ID, "publish_id", messageID)
+	logger.Debug(ctx, "Published message successfully", "id", message.ID, "publish_id", messageID)
 }
 
 func requeueDLQ(backend hedwig.ConsumerBackend, decoder hedwig.Decoder, instrumenter hedwig.Instrumenter, logger hedwig.Logger) {

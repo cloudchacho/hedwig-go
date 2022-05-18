@@ -291,7 +291,7 @@ func (b *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 			return errors.New("failed to send some messages")
 		}
 		numMessagesRequeued += uint32(len(sendOut.Successful))
-		b.logger.Info(ctx, "Re-queue DLQ progress", "num_messages", numMessagesRequeued)
+		b.logger.Debug(ctx, "Re-queue DLQ progress", "num_messages", numMessagesRequeued)
 	}
 }
 

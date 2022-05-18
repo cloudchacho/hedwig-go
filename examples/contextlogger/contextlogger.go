@@ -16,11 +16,6 @@ func (l Logger) Error(ctx context.Context, err error, message string, keyvals ..
 	l.Logger.Error(ctx, err, message, keyvals...)
 }
 
-func (l Logger) Info(ctx context.Context, message string, keyvals ...interface{}) {
-	keyvals = append(keyvals, l.Extractor(ctx)...)
-	l.Logger.Info(ctx, message, keyvals...)
-}
-
 func (l Logger) Debug(ctx context.Context, message string, keyvals ...interface{}) {
 	keyvals = append(keyvals, l.Extractor(ctx))
 	l.Logger.Debug(ctx, message, keyvals...)

@@ -47,12 +47,6 @@ func (f *fakeLogger) Error(_ context.Context, err error, message string, keyvals
 	f.logs = append(f.logs, fakeLog{"error", err, message, keyvals})
 }
 
-func (f *fakeLogger) Info(_ context.Context, message string, keyvals ...interface{}) {
-	f.lock.Lock()
-	defer f.lock.Unlock()
-	f.logs = append(f.logs, fakeLog{"info", nil, message, keyvals})
-}
-
 func (f *fakeLogger) Debug(_ context.Context, message string, keyvals ...interface{}) {
 	f.lock.Lock()
 	defer f.lock.Unlock()

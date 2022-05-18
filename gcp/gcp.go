@@ -180,7 +180,7 @@ func (b *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 		for {
 			select {
 			case <-progressTicker.C:
-				b.logger.Info(ctx, "Re-queue DLQ progress", "num_messages", atomic.LoadUint32(&numMessagesRequeued))
+				b.logger.Debug(ctx, "Re-queue DLQ progress", "num_messages", atomic.LoadUint32(&numMessagesRequeued))
 			case <-rctx.Done():
 				return
 			}

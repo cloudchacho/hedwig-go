@@ -30,7 +30,7 @@ func (h *jsonSchemaHandler) userCreated(ctx context.Context, message *hedwig.Mes
 		return errors.New(h.fakeCallbackErr)
 	}
 	userID := message.Data.(*UserCreatedData).UserID
-	h.logger.Info(ctx, "Receive user created message", "id", message.ID, "user_id", userID, "request_id", message.Metadata.Headers["request_id"],
+	h.logger.Debug(ctx, "Receive user created message", "id", message.ID, "user_id", userID, "request_id", message.Metadata.Headers["request_id"],
 		"provider_metadata", message.Metadata.ProviderMetadata)
 	return nil
 }

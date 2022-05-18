@@ -25,10 +25,6 @@ func (l Logger) Error(_ context.Context, err error, message string, keyvals ...i
 	l.with(keyvals).With(zap.Error(err)).Error(message)
 }
 
-func (l Logger) Info(_ context.Context, message string, keyvals ...interface{}) {
-	l.with(keyvals).Info(message)
-}
-
 func (l Logger) Debug(_ context.Context, message string, keyvals ...interface{}) {
 	l.with(keyvals).Debug(message)
 }

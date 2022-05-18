@@ -22,10 +22,6 @@ func (l Logger) Error(_ context.Context, err error, message string, keyvals ...i
 	l.withFields(keyvals).WithError(err).Error(message)
 }
 
-func (l Logger) Info(_ context.Context, message string, keyvals ...interface{}) {
-	l.withFields(keyvals).Info(message)
-}
-
 func (l Logger) Debug(_ context.Context, message string, keyvals ...interface{}) {
 	l.withFields(keyvals).Debug(message)
 }

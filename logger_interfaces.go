@@ -11,9 +11,6 @@ type Logger interface {
 	// You can generally expect one of these fields to be available: message_sqs_id, message_sns_id.
 	Error(ctx context.Context, err error, message string, keyvals ...interface{})
 
-	// Info logs a debug level log with a message. `keyvals` param works the same as `Error`.
-	Info(ctx context.Context, message string, keyvals ...interface{})
-
 	// Debug logs a debug level log with a message. `keyvals` param works the same as `Error`.
 	Debug(ctx context.Context, message string, keyvals ...interface{})
 }
@@ -34,10 +31,6 @@ func (s StdLogger) toMap(keyvals ...interface{}) map[string]interface{} {
 
 func (s StdLogger) Error(_ context.Context, err error, message string, keyvals ...interface{}) {
 	log.Printf("[ERROR] %s: %s %+v\n", message, err.Error(), s.toMap(keyvals))
-}
-
-func (s StdLogger) Info(_ context.Context, message string, keyvals ...interface{}) {
-	log.Printf("[INFO] %s %+v\n", message, s.toMap(keyvals))
 }
 
 func (s StdLogger) Debug(_ context.Context, message string, keyvals ...interface{}) {
