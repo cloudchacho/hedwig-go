@@ -385,3 +385,10 @@ func (s *ConsumerTestSuite) SetupTest() {
 func TestConsumerTestSuite(t *testing.T) {
 	suite.Run(t, &ConsumerTestSuite{})
 }
+
+func TestConsumer_DefaultLogger(t *testing.T) {
+	backend := &fakeBackend{}
+
+	consumer := NewQueueConsumer(backend, nil, nil, nil)
+	assert.NotNil(t, consumer.logger)
+}

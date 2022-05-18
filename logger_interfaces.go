@@ -17,7 +17,7 @@ type Logger interface {
 
 type StdLogger struct{}
 
-func (s StdLogger) toMap(keyvals ...interface{}) map[string]interface{} {
+func (s StdLogger) toMap(keyvals []interface{}) map[string]interface{} {
 	if len(keyvals)%2 != 0 {
 		// really a bug
 		return nil
