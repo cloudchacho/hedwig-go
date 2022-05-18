@@ -8,9 +8,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/cloudchacho/hedwig-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cloudchacho/hedwig-go"
 )
 
 func Test_StdLogger(t *testing.T) {
@@ -32,9 +33,9 @@ func Test_StdLogger(t *testing.T) {
 			name: "Error",
 			fcall: func(logger hedwig.StdLogger) {
 				var ctx context.Context
-				logger.Error(ctx, errors.New("oops!"), "Test message", "key", "value", "key2", "value2")
+				logger.Error(ctx, errors.New("oops"), "Test message", "key", "value", "key2", "value2")
 			},
-			want: "[ERROR] Test message: oops! map[key:value key2:value2]",
+			want: "[ERROR] Test message: oops map[key:value key2:value2]",
 		},
 	}
 	for _, test := range tests {
