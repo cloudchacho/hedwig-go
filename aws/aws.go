@@ -26,9 +26,9 @@ import (
 type Backend struct {
 	settings Settings
 
-	sqs       sqsiface.SQSAPI
-	sns       snsiface.SNSAPI
-	getLogger hedwig.GetLoggerFunc
+	sqs    sqsiface.SQSAPI
+	sns    snsiface.SNSAPI
+	logger hedwig.Logger
 }
 
 var _ = hedwig.ConsumerBackend(&Backend{})
@@ -200,10 +200,12 @@ func (b *Backend) Receive(ctx context.Context, numMessages uint32, visibilityTim
 				if encoding, ok := attributes["hedwig_encoding"]; ok && encoding == "base64" {
 					payload, err = base64.StdEncoding.DecodeString(string(payload))
 					if err != nil {
-						b.getLogger(ctx).Error(
+						b.logger.Error(
+							ctx,
 							err,
 							"Invalid message payload - couldn't decode using base64",
-							hedwig.LoggingFields{"message_id": queueMessage.MessageId},
+							"message_id",
+							queueMessage.MessageId,
 						)
 						return
 					}
@@ -289,7 +291,7 @@ func (b *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 			return errors.New("failed to send some messages")
 		}
 		numMessagesRequeued += uint32(len(sendOut.Successful))
-		b.getLogger(ctx).Info("Re-queue DLQ progress", hedwig.LoggingFields{"num_messages": numMessagesRequeued})
+		b.logger.Debug(ctx, "Re-queue DLQ progress", "num_messages", numMessagesRequeued)
 	}
 }
 
@@ -335,9 +337,8 @@ func (b *Backend) initDefaults() {
 	if b.settings.AWSReadTimeoutS == 0 {
 		b.settings.AWSReadTimeoutS = 2 * time.Second
 	}
-	if b.getLogger == nil {
-		stdLogger := &hedwig.StdLogger{}
-		b.getLogger = func(_ context.Context) hedwig.Logger { return stdLogger }
+	if b.logger == nil {
+		b.logger = hedwig.StdLogger{}
 	}
 }
 
@@ -364,16 +365,16 @@ func createSession(region, awsAccessKey, awsSecretAccessKey, awsSessionToken str
 
 // NewBackend creates a Backend for publishing and consuming from AWS
 // The provider metadata produced by this Backend will have concrete type: aws.Metadata
-func NewBackend(settings Settings, getLogger hedwig.GetLoggerFunc) *Backend {
+func NewBackend(settings Settings, logger hedwig.Logger) *Backend {
 	awsSession := createSession(
 		settings.AWSRegion, settings.AWSAccessKey, settings.AWSSecretKey, settings.AWSSessionToken,
 	)
 
 	b := &Backend{
-		settings:  settings,
-		sqs:       sqs.New(awsSession),
-		sns:       sns.New(awsSession),
-		getLogger: getLogger,
+		settings: settings,
+		sqs:      sqs.New(awsSession),
+		sns:      sns.New(awsSession),
+		logger:   logger,
 	}
 	b.initDefaults()
 	return b

@@ -4,6 +4,7 @@ import (
 	"os"
 
 	gcloudPropagator "github.com/GoogleCloudPlatform/opentelemetry-operations-go/propagator"
+	"github.com/cloudchacho/hedwig-go"
 	"github.com/cloudchacho/hedwig-go/gcp"
 )
 
@@ -19,8 +20,8 @@ func gcpBackendSettings() gcp.Settings {
 	}
 }
 
-func gcpBackend() *gcp.Backend {
-	return gcp.NewBackend(gcpBackendSettings(), nil)
+func gcpBackend(logger hedwig.Logger) *gcp.Backend {
+	return gcp.NewBackend(gcpBackendSettings(), logger)
 }
 
 func gcpPropagator() gcloudPropagator.CloudTraceFormatPropagator {

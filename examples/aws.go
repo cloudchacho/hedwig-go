@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 
+	"github.com/cloudchacho/hedwig-go"
 	"github.com/cloudchacho/hedwig-go/aws"
 	"go.opentelemetry.io/otel/propagation"
 )
@@ -22,8 +23,8 @@ func awsBackendSettings() aws.Settings {
 	}
 }
 
-func awsBackend() *aws.Backend {
-	return aws.NewBackend(awsBackendSettings(), nil)
+func awsBackend(logger hedwig.Logger) *aws.Backend {
+	return aws.NewBackend(awsBackendSettings(), logger)
 }
 
 func awsPropagator() propagation.TraceContext {

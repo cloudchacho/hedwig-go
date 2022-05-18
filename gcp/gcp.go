@@ -17,9 +17,9 @@ import (
 )
 
 type Backend struct {
-	client    *pubsub.Client
-	settings  Settings
-	getLogger hedwig.GetLoggerFunc
+	client   *pubsub.Client
+	settings Settings
+	logger   hedwig.Logger
 }
 
 var _ = hedwig.ConsumerBackend(&Backend{})
@@ -180,7 +180,7 @@ func (b *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 		for {
 			select {
 			case <-progressTicker.C:
-				b.getLogger(ctx).Info("Re-queue DLQ progress", hedwig.LoggingFields{"num_messages": atomic.LoadUint32(&numMessagesRequeued)})
+				b.logger.Debug(ctx, "Re-queue DLQ progress", "num_messages", atomic.LoadUint32(&numMessagesRequeued))
 			case <-rctx.Done():
 				return
 			}
@@ -286,16 +286,15 @@ func (b *Backend) initDefaults() {
 	if b.settings.PubsubClientOptions == nil {
 		b.settings.PubsubClientOptions = []option.ClientOption{}
 	}
-	if b.getLogger == nil {
-		stdLogger := &hedwig.StdLogger{}
-		b.getLogger = func(_ context.Context) hedwig.Logger { return stdLogger }
+	if b.logger == nil {
+		b.logger = &hedwig.StdLogger{}
 	}
 }
 
 // NewBackend creates a Backend for publishing and consuming from GCP
 // The provider metadata produced by this Backend will have concrete type: gcp.Metadata
-func NewBackend(settings Settings, getLogger hedwig.GetLoggerFunc) *Backend {
-	b := &Backend{settings: settings, getLogger: getLogger}
+func NewBackend(settings Settings, logger hedwig.Logger) *Backend {
+	b := &Backend{settings: settings, logger: logger}
 	b.initDefaults()
 	return b
 }

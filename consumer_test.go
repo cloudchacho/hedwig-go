@@ -17,7 +17,7 @@ type fakeLog struct {
 	level   string
 	err     error
 	message string
-	fields  LoggingFields
+	fields  []interface{}
 }
 
 type fakeLogger struct {
@@ -25,28 +25,16 @@ type fakeLogger struct {
 	logs []fakeLog
 }
 
-func (f *fakeLogger) Error(err error, message string, fields LoggingFields) {
+func (f *fakeLogger) Error(_ context.Context, err error, message string, keyvals ...interface{}) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
-	f.logs = append(f.logs, fakeLog{"error", err, message, fields})
+	f.logs = append(f.logs, fakeLog{"error", err, message, keyvals})
 }
 
-func (f *fakeLogger) Warn(err error, message string, fields LoggingFields) {
+func (f *fakeLogger) Debug(_ context.Context, message string, keyvals ...interface{}) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
-	f.logs = append(f.logs, fakeLog{"warn", err, message, fields})
-}
-
-func (f *fakeLogger) Info(message string, fields LoggingFields) {
-	f.lock.Lock()
-	defer f.lock.Unlock()
-	f.logs = append(f.logs, fakeLog{"info", nil, message, fields})
-}
-
-func (f *fakeLogger) Debug(message string, fields LoggingFields) {
-	f.lock.Lock()
-	defer f.lock.Unlock()
-	f.logs = append(f.logs, fakeLog{"debug", nil, message, fields})
+	f.logs = append(f.logs, fakeLog{"debug", nil, message, keyvals})
 }
 
 type fakeCallback struct {
@@ -381,15 +369,12 @@ type ConsumerTestSuite struct {
 func (s *ConsumerTestSuite) SetupTest() {
 	callback := &fakeCallback{}
 	logger := &fakeLogger{}
-	getLogger := func(_ context.Context) Logger {
-		return logger
-	}
 
 	registry := CallbackRegistry{MessageTypeMajorVersion{"user-created", 1}: callback.Callback}
 	backend := &fakeBackend{}
 	deserializer := &fakeDeserializer{}
 
-	s.consumer = NewQueueConsumer(backend, nil, getLogger, registry)
+	s.consumer = NewQueueConsumer(backend, nil, logger, registry)
 	s.consumer.deserializer = deserializer
 	s.backend = backend
 	s.callback = callback
@@ -399,4 +384,11 @@ func (s *ConsumerTestSuite) SetupTest() {
 
 func TestConsumerTestSuite(t *testing.T) {
 	suite.Run(t, &ConsumerTestSuite{})
+}
+
+func TestConsumer_DefaultLogger(t *testing.T) {
+	backend := &fakeBackend{}
+
+	consumer := NewQueueConsumer(backend, nil, nil, nil)
+	assert.NotNil(t, consumer.logger)
 }
