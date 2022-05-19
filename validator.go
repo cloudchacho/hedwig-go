@@ -1,7 +1,6 @@
 package hedwig
 
 import (
-	"encoding/binary"
 	"fmt"
 	"strconv"
 	"strings"
@@ -61,42 +60,6 @@ func (v *messageValidator) getPayloadandAttributes(message *Message, runWithTran
 		attributes = message.Metadata.Headers
 	}
 	return messagePayload, attributes, nil
-}
-
-func (v *messageValidator) DeserializeFirehose(line []byte) (*Message, error) {
-	var messagePayload []byte
-	runWithTransportMessageAttributes := false
-	if v.encoder.IsBinary() {
-		messagePayload = make([]byte, len(line)-8)
-		// TLV format: 8 bytes for size of message, n bytes for the actual message
-		copy(messagePayload, line[8:])
-	} else {
-		messagePayload = make([]byte, len(line)-1)
-		// last char is new line, skip that
-		copy(messagePayload, line[:len(line)-1])
-	}
-	return v.deserialize(messagePayload, nil, nil, &runWithTransportMessageAttributes)
-}
-
-func (v *messageValidator) SerializeFirehose(message *Message) ([]byte, error) {
-	runWithTransportMessageAttributes := false
-	messagePayload, _, err := v.serialize(message, &runWithTransportMessageAttributes)
-	if err != nil {
-		return nil, err
-	}
-	var encodedMessage []byte
-	if v.encoder.IsBinary() {
-		// TLV format: 8 bytes for size of message, n bytes for the actual message
-		encodedMessage = make([]byte, 8+len(messagePayload))
-		binary.LittleEndian.PutUint64(encodedMessage, uint64(len(messagePayload)))
-		copy(encodedMessage[8:], messagePayload)
-	} else {
-		encodedMessage = make([]byte, 1+len(messagePayload))
-		copy(encodedMessage, messagePayload)
-		encodedMessage[len(encodedMessage)-1] = byte('\n')
-	}
-	_, err = v.DeserializeFirehose(encodedMessage)
-	return encodedMessage, err
 }
 
 // decodeMetaAttributes decodes message transport attributes as MetaAttributes
