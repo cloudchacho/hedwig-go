@@ -32,9 +32,24 @@ func (f *Firehose) Deserialize(reader io.Reader) ([]Message, error) {
 				return nil, err
 			}
 		} else {
-			messagePayload = make([]byte, 10)
-			// last char is new line, skip that
-			// copy(messagePayload, line[:len(line)-1])
+			var err error
+			for {
+				c := make([]byte, 1)
+				_, err = reader.Read(c)
+				if err == io.EOF {
+					break
+				} else if err != nil {
+					return nil, err
+				}
+				// last char is new line, skip that and go to next msg
+				if c[0] == '\n' {
+					break
+				}
+				messagePayload = append(messagePayload, c...)
+			}
+			if err == io.EOF {
+				break
+			}
 		}
 
 		res, err := f.messageValidator.deserialize(messagePayload, nil, nil, &runWithTransportMessageAttributes)

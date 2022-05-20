@@ -13,6 +13,7 @@ import (
 )
 
 func (s *FirehoseTestSuite) TestSerializeFirehose() {
+	s.encoder.On("IsBinary").Return(true)
 	s.encoder.On("VerifyKnownMinorVersion", s.message.Type, s.message.DataSchemaVersion).Return(nil)
 	schema := "user-created/1.0"
 	s.encoder.On("EncodeMessageType", s.message.Type, s.message.DataSchemaVersion).Return(schema)
@@ -35,7 +36,30 @@ func (s *FirehoseTestSuite) TestSerializeFirehose() {
 	s.Equal(res, expected)
 }
 
+func (s *FirehoseTestSuite) TestSerializeFirehoseNonBinary() {
+	s.encoder.On("IsBinary").Return(false)
+	s.encoder.On("VerifyKnownMinorVersion", s.message.Type, s.message.DataSchemaVersion).Return(nil)
+	schema := "user-created/1.0"
+	s.encoder.On("EncodeMessageType", s.message.Type, s.message.DataSchemaVersion).Return(schema)
+
+	payload := []byte("user-created/1.0 C_123")
+
+	s.encoder.On("EncodeData", s.message.Data, false, s.metaAttrs).
+		Return(payload, nil)
+
+	s.decoder.On("DecodeMessageType", schema).Return(s.message.Type, s.message.DataSchemaVersion, nil)
+	s.decoder.On("DecodeData", s.message.Type, s.message.DataSchemaVersion, payload).
+		Return(s.message.Data, nil)
+	s.decoder.On("ExtractData", payload, map[string]string(nil)).Return(s.metaAttrs, payload, nil)
+	s.decoder.On("ExtractData", payload, map[string]string{"foo": "bar"}).Return(s.metaAttrs, payload, nil)
+	res, err := s.firehose.Serialize(s.message)
+	s.Nil(err)
+	expected := []byte("user-created/1.0 C_123\n")
+	s.Equal(res, expected)
+}
+
 func (s *FirehoseTestSuite) TestSerializeFirehoseError() {
+	s.encoder.On("IsBinary").Return(true)
 	s.encoder.On("VerifyKnownMinorVersion", s.message.Type, s.message.DataSchemaVersion).Return(errors.New("bad version"))
 	schema := "user-created/1.0"
 	s.encoder.On("EncodeMessageType", s.message.Type, s.message.DataSchemaVersion).Return(schema)
@@ -55,6 +79,33 @@ func (s *FirehoseTestSuite) TestSerializeFirehoseError() {
 }
 
 func (s *FirehoseTestSuite) TestDeSerializeFirehose() {
+	s.encoder.On("IsBinary").Return(true)
+	// first 8 bytes is length of message (22) in this case
+	payload := []byte("user-created/1.0 C_123")
+	schema := "user-created/1.0"
+
+	s.encoder.On("VerifyKnownMinorVersion", s.message.Type, s.message.DataSchemaVersion).Return(nil)
+	s.encoder.On("EncodeMessageType", s.message.Type, s.message.DataSchemaVersion).Return(schema)
+	s.encoder.On("EncodeData", s.message.Data, false, s.metaAttrs).
+		Return(payload, nil)
+
+	s.decoder.On("ExtractData", payload, map[string]string(nil)).Return(s.metaAttrs, payload, nil)
+	s.decoder.On("ExtractData", payload, map[string]string{"foo": "bar"}).Return(s.metaAttrs, payload, nil)
+	s.decoder.On("DecodeMessageType", schema).Return(s.message.Type, s.message.DataSchemaVersion, nil)
+	s.decoder.On("DecodeData", s.message.Type, s.message.DataSchemaVersion, payload).
+		Return(s.message.Data, nil)
+	line, err := s.firehose.Serialize(s.message)
+	r := bytes.NewReader(line)
+	s.Nil(err)
+	res, err := s.firehose.Deserialize(r)
+	s.Nil(err)
+	s.Equal(res[0], *s.message)
+	s.Equal(len(res), 1)
+
+}
+
+func (s *FirehoseTestSuite) TestDeSerializeFirehoseNonBinary() {
+	s.encoder.On("IsBinary").Return(false)
 	// first 8 bytes is length of message (22) in this case
 	payload := []byte("user-created/1.0 C_123")
 	schema := "user-created/1.0"
