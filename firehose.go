@@ -1,6 +1,7 @@
 package hedwig
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"io"
@@ -15,8 +16,8 @@ func (f *Firehose) Deserialize(reader io.Reader) ([]Message, error) {
 	var messagePayload []byte
 	runWithTransportMessageAttributes := false
 	var messages []Message
-	for {
-		if f.messageValidator.encoder.IsBinary() {
+	if f.messageValidator.encoder.IsBinary() {
+		for {
 			// TLV format: 8 bytes for size of message, n bytes for the actual message
 			msgSize := make([]byte, 8)
 			_, err := reader.Read(msgSize)
@@ -31,33 +32,33 @@ func (f *Firehose) Deserialize(reader io.Reader) ([]Message, error) {
 			if err != nil && err != io.EOF {
 				return nil, err
 			}
-		} else {
-			var err error
-			for {
-				c := make([]byte, 1)
-				_, err = reader.Read(c)
-				if err == io.EOF {
-					break
-				} else if err != nil {
-					return nil, err
-				}
-				// last char is new line, skip that and go to next msg
-				if c[0] == '\n' {
-					break
-				}
-				messagePayload = append(messagePayload, c...)
+
+			res, err := f.messageValidator.deserialize(messagePayload, nil, nil, &runWithTransportMessageAttributes)
+			if err != nil {
+				return nil, err
 			}
+			messages = append(messages, *res)
+		}
+	} else {
+		bf := bufio.NewReader(reader)
+		for {
+			c, err := bf.ReadBytes('\n')
 			if err == io.EOF {
 				break
+			} else if err != nil {
+				return nil, err
 			}
-		}
+			// last char is new line, skip that and go to next msg
+			messagePayload := c[:len(c)-1]
 
-		res, err := f.messageValidator.deserialize(messagePayload, nil, nil, &runWithTransportMessageAttributes)
-		if err != nil {
-			return nil, err
+			res, err := f.messageValidator.deserialize(messagePayload, nil, nil, &runWithTransportMessageAttributes)
+			if err != nil {
+				return nil, err
+			}
+			messages = append(messages, *res)
 		}
-		messages = append(messages, *res)
 	}
+
 	return messages, nil
 }
 

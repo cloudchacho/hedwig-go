@@ -95,12 +95,14 @@ func (s *FirehoseTestSuite) TestDeSerializeFirehose() {
 	s.decoder.On("DecodeData", s.message.Type, s.message.DataSchemaVersion, payload).
 		Return(s.message.Data, nil)
 	line, err := s.firehose.Serialize(s.message)
-	r := bytes.NewReader(line)
+	multiple := append(line, line...)
+	r := bytes.NewReader(multiple)
 	s.Nil(err)
 	res, err := s.firehose.Deserialize(r)
 	s.Nil(err)
+	s.Equal(len(res), 2)
 	s.Equal(res[0], *s.message)
-	s.Equal(len(res), 1)
+	s.Equal(res[1], *s.message)
 
 }
 
@@ -121,12 +123,14 @@ func (s *FirehoseTestSuite) TestDeSerializeFirehoseNonBinary() {
 	s.decoder.On("DecodeData", s.message.Type, s.message.DataSchemaVersion, payload).
 		Return(s.message.Data, nil)
 	line, err := s.firehose.Serialize(s.message)
-	r := bytes.NewReader(line)
+	multiple := append(line, line...)
+	r := bytes.NewReader(multiple)
 	s.Nil(err)
 	res, err := s.firehose.Deserialize(r)
 	s.Nil(err)
+	s.Equal(len(res), 2)
 	s.Equal(res[0], *s.message)
-	s.Equal(len(res), 1)
+	s.Equal(res[1], *s.message)
 
 }
 
