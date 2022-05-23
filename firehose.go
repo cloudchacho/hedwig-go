@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 )
 
@@ -12,22 +13,25 @@ type Firehose struct {
 }
 
 func (f *Firehose) Deserialize(reader io.Reader) ([]Message, error) {
-	// TODO: loop through contents and return messages
-	var messagePayload []byte
 	runWithTransportMessageAttributes := false
 	var messages []Message
 	if f.messageValidator.encoder.IsBinary() {
+		var messagePayload []byte
 		for {
 			// TLV format: 8 bytes for size of message, n bytes for the actual message
 			msgSize := make([]byte, 8)
-			_, err := reader.Read(msgSize)
-			if err == io.EOF {
+			l, err := reader.Read(msgSize)
+			if err == io.EOF && l != 0 {
+				return nil, fmt.Errorf("TLV may be malformed EOF reached when trying to read length")
+			} else if err == io.EOF {
 				break
 			} else if err != nil {
 				return nil, err
 			}
 			msgLength := binary.LittleEndian.Uint64(msgSize)
-			messagePayload = make([]byte, msgLength)
+			if len(messagePayload) < int(msgLength) {
+				messagePayload = append(messagePayload, make([]byte, int(msgLength)-len(messagePayload))...)
+			}
 			_, err = reader.Read(messagePayload)
 			if err != nil && err != io.EOF {
 				return nil, err
@@ -40,16 +44,13 @@ func (f *Firehose) Deserialize(reader io.Reader) ([]Message, error) {
 			messages = append(messages, *res)
 		}
 	} else {
-		bf := bufio.NewReader(reader)
-		for {
-			c, err := bf.ReadBytes('\n')
-			if err == io.EOF {
-				break
-			} else if err != nil {
+		s := bufio.NewScanner(reader)
+		s.Split(bufio.ScanLines)
+		for s.Scan() {
+			if err := s.Err(); err != nil {
 				return nil, err
 			}
-			// last char is new line, skip that and go to next msg
-			messagePayload := c[:len(c)-1]
+			messagePayload := s.Bytes()
 
 			res, err := f.messageValidator.deserialize(messagePayload, nil, nil, &runWithTransportMessageAttributes)
 			if err != nil {
