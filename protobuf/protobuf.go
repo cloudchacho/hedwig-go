@@ -188,6 +188,11 @@ func (ed *EncoderDecoder) EncodeMessageType(messageType string, version *semver.
 	return fmt.Sprintf("%s/%d.%d", messageType, version.Major(), version.Minor())
 }
 
+// IsBinary states prtobuf is a binary format
+func (ed *EncoderDecoder) IsBinary() bool {
+	return true
+}
+
 // DecodeMessageType decodes message type from meta attributes
 func (ed *EncoderDecoder) DecodeMessageType(schema string) (string, *semver.Version, error) {
 	m := schemaRegex.FindStringSubmatch(schema)

@@ -31,6 +31,11 @@ func (f *fakeEncoder) EncodeMessageType(messageType string, version *semver.Vers
 	return args.String(0)
 }
 
+func (f *fakeEncoder) IsBinary() bool {
+	args := f.Called()
+	return args.Bool(0)
+}
+
 type fakeDecoder struct {
 	mock.Mock
 }
@@ -64,7 +69,7 @@ func (s *ValidatorTestSuite) TestSerialize() {
 	s.decoder.On("DecodeData", s.message.Type, s.message.DataSchemaVersion, payload).
 		Return(s.message.Data, nil)
 
-	returnedPayload, returnedAttributes, err := s.validator.serialize(s.message)
+	returnedPayload, returnedAttributes, err := s.validator.serialize(s.message, nil)
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), returnedPayload, payload)
 	assert.Equal(s.T(), returnedAttributes, s.attributes)
@@ -91,7 +96,7 @@ func (s *ValidatorTestSuite) TestSerializeContainerized() {
 	s.decoder.On("DecodeData", s.message.Type, s.message.DataSchemaVersion, data).
 		Return(s.message.Data, nil)
 
-	returnedPayload, returnedAttributes, err := s.validator.serialize(s.message)
+	returnedPayload, returnedAttributes, err := s.validator.serialize(s.message, nil)
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), returnedPayload, payload)
 	assert.Equal(s.T(), returnedAttributes, s.metaAttrs.Headers)
@@ -106,7 +111,7 @@ func (s *ValidatorTestSuite) TestSerializeUnknownMinor() {
 
 	s.encoder.On("VerifyKnownMinorVersion", message.Type, message.DataSchemaVersion).Return(errors.New("unknown minor version"))
 
-	_, _, err = s.validator.serialize(message)
+	_, _, err = s.validator.serialize(message, nil)
 	s.EqualError(err, "unknown minor version")
 
 	s.encoder.AssertExpectations(s.T())
@@ -120,7 +125,7 @@ func (s *ValidatorTestSuite) TestSerializeEncodeFailed() {
 	s.encoder.On("EncodeData", s.message.Data, true, s.metaAttrs).
 		Return([]byte(""), errors.New("can't serialize data"))
 
-	_, _, err := s.validator.serialize(s.message)
+	_, _, err := s.validator.serialize(s.message, nil)
 	s.EqualError(err, "can't serialize data")
 
 	s.encoder.AssertExpectations(s.T())
@@ -139,7 +144,7 @@ func (s *ValidatorTestSuite) TestSerializeValidationFailure() {
 	s.decoder.On("DecodeMessageType", schema).
 		Return("", (*semver.Version)(nil), errors.New("invalid message type"))
 
-	_, _, err := s.validator.serialize(s.message)
+	_, _, err := s.validator.serialize(s.message, nil)
 	s.EqualError(err, "invalid message type")
 
 	s.encoder.AssertExpectations(s.T())
@@ -154,7 +159,7 @@ func (s *ValidatorTestSuite) TestDeserialize() {
 	s.decoder.On("DecodeMessageType", schema).Return(s.message.Type, s.message.DataSchemaVersion, nil)
 	s.decoder.On("DecodeData", s.message.Type, s.message.DataSchemaVersion, payload).Return(s.message.Data, nil)
 
-	returnedMessage, err := s.validator.deserialize(payload, s.attributes, nil)
+	returnedMessage, err := s.validator.deserialize(payload, s.attributes, nil, nil)
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), returnedMessage, s.message)
 
@@ -169,7 +174,7 @@ func (s *ValidatorTestSuite) TestDeserializeExtractionFailure() {
 	s.decoder.On("ExtractData", payload, s.attributes).
 		Return(MetaAttributes{}, nil, errors.New("invalid payload"))
 
-	_, err := s.validator.deserialize(payload, s.attributes, nil)
+	_, err := s.validator.deserialize(payload, s.attributes, nil, nil)
 	s.EqualError(err, "invalid payload")
 
 	s.decoder.AssertExpectations(s.T())
@@ -181,7 +186,7 @@ func (s *ValidatorTestSuite) TestDeserializeUnknownMessageType() {
 	s.decoder.On("DecodeMessageType", s.metaAttrs.Schema).
 		Return(s.message.Type, s.message.DataSchemaVersion, errors.New("invalid message type"))
 
-	_, err := s.validator.deserialize(payload, s.attributes, nil)
+	_, err := s.validator.deserialize(payload, s.attributes, nil, nil)
 	s.EqualError(err, "invalid message type")
 
 	s.decoder.AssertExpectations(s.T())
@@ -192,7 +197,7 @@ func (s *ValidatorTestSuite) TestDeserializeUnknownFormatVersion() {
 
 	payload := []byte("user-created/1.0 C_123")
 
-	_, err := s.validator.deserialize(payload, s.attributes, nil)
+	_, err := s.validator.deserialize(payload, s.attributes, nil, nil)
 	s.EqualError(err, "Invalid format version: 1.1")
 
 	s.decoder.AssertExpectations(s.T())
@@ -207,7 +212,7 @@ func (s *ValidatorTestSuite) TestDeserializeInvalidData() {
 	s.decoder.On("DecodeData", s.message.Type, s.message.DataSchemaVersion, payload).
 		Return(s.message.Data, errors.New("invalid data"))
 
-	_, err := s.validator.deserialize(payload, s.attributes, nil)
+	_, err := s.validator.deserialize(payload, s.attributes, nil, nil)
 	s.EqualError(err, "invalid data")
 
 	s.decoder.AssertExpectations(s.T())
@@ -223,7 +228,7 @@ func (s *ValidatorTestSuite) TestDeserializeInvalidHeaders() {
 
 	s.decoder.On("ExtractData", payload, s.attributes).Return(s.metaAttrs, data, nil)
 
-	_, err := s.validator.deserialize(payload, s.attributes, nil)
+	_, err := s.validator.deserialize(payload, s.attributes, nil, nil)
 	s.EqualError(err, "invalid header key: 'hedwig_id' - can't begin with reserved namespace 'hedwig_'")
 
 	s.decoder.AssertExpectations(s.T())
@@ -319,6 +324,29 @@ func (s *ValidatorTestSuite) TestDecodeMetaAttrsValidation() {
 			s.Error(err)
 		})
 	}
+}
+
+func (s *ValidatorTestSuite) TestGetPayloadandAttributes() {
+	s.encoder.On("VerifyKnownMinorVersion", s.message.Type, s.message.DataSchemaVersion).Return(nil)
+	schema := "user-created/1.0"
+	s.encoder.On("EncodeMessageType", s.message.Type, s.message.DataSchemaVersion).Return(schema)
+
+	payload := []byte("user-created/1.0 C_123")
+
+	s.encoder.On("EncodeData", s.message.Data, false, s.metaAttrs).
+		Return(payload, nil)
+
+	s.decoder.On("DecodeMessageType", schema).Return(s.message.Type, s.message.DataSchemaVersion, nil)
+	s.decoder.On("DecodeData", s.message.Type, s.message.DataSchemaVersion, payload).
+		Return(s.message.Data, nil)
+	s.decoder.On("ExtractData", payload, map[string]string{"foo": "bar"}).Return(s.metaAttrs, payload, nil)
+	s.decoder.On("ExtractData", payload, map[string]string{}).Return(s.metaAttrs, payload, nil)
+	s.validator.useTransportMessageAttributes = false
+	res, attrs, err := s.validator.getPayloadAndAttributes(s.message, nil)
+	s.Nil(err)
+	expected := []byte("user-created/1.0 C_123")
+	s.Equal(res, expected)
+	s.Equal(attrs, map[string]string{"foo": "bar"})
 }
 
 func (s *ValidatorTestSuite) TestNew() {

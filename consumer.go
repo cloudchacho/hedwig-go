@@ -52,7 +52,7 @@ func (c *Consumer) processMessage(ctx context.Context, payload []byte, attribute
 		}
 	}()
 
-	message, err := c.deserializer.deserialize(payload, attributes, providerMetadata)
+	message, err := c.deserializer.deserialize(payload, attributes, providerMetadata, nil)
 	if err != nil {
 		c.logger.Error(ctx, err, "invalid message, unable to unmarshal", "message_body", payload)
 		return
@@ -171,7 +171,7 @@ func wrapCallback(function CallbackFunction) CallbackFunction {
 }
 
 type deserializer interface {
-	deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}) (*Message, error)
+	deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}, overrideUseMsgAttrs *bool) (*Message, error)
 	withUseTransportMessageAttributes(useTransportMessageAttributes bool)
 }
 

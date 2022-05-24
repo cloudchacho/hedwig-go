@@ -27,6 +27,41 @@ type messageValidator struct {
 	useTransportMessageAttributes bool
 }
 
+func (v *messageValidator) getPayloadAndAttributes(message *Message, overrideUseMsgAttrs *bool) ([]byte, map[string]string, error) {
+	shouldRunWithMessageAttributes := v.useTransportMessageAttributes
+	if overrideUseMsgAttrs != nil {
+		shouldRunWithMessageAttributes = *overrideUseMsgAttrs
+	}
+	err := v.encoder.VerifyKnownMinorVersion(message.Type, message.DataSchemaVersion)
+	if err != nil {
+		return nil, nil, err
+	}
+	err = v.verifyHeaders(message.Metadata.Headers)
+	if err != nil {
+		return nil, nil, err
+	}
+	schema := v.encoder.EncodeMessageType(message.Type, message.DataSchemaVersion)
+	metaAttrs := MetaAttributes{
+		message.Metadata.Timestamp,
+		message.Metadata.Publisher,
+		message.Metadata.Headers,
+		message.ID,
+		schema,
+		v.currentFormatVersion,
+	}
+	messagePayload, err := v.encoder.EncodeData(message.Data, shouldRunWithMessageAttributes, metaAttrs)
+	if err != nil {
+		return nil, nil, err
+	}
+	var attributes map[string]string
+	if shouldRunWithMessageAttributes {
+		attributes = v.encodeMetaAttributes(metaAttrs)
+	} else {
+		attributes = message.Metadata.Headers
+	}
+	return messagePayload, attributes, nil
+}
+
 // decodeMetaAttributes decodes message transport attributes as MetaAttributes
 func (v *messageValidator) decodeMetaAttributes(attributes map[string]string) (MetaAttributes, error) {
 	metaAttrs := MetaAttributes{}
@@ -89,47 +124,28 @@ func (v *messageValidator) encodeMetaAttributes(metaAttrs MetaAttributes) map[st
 	return attributes
 }
 
-func (v *messageValidator) serialize(message *Message) ([]byte, map[string]string, error) {
-	err := v.encoder.VerifyKnownMinorVersion(message.Type, message.DataSchemaVersion)
+func (v *messageValidator) serialize(message *Message, overrideUseMsgAttrs *bool) ([]byte, map[string]string, error) {
+	messagePayload, attributes, err := v.getPayloadAndAttributes(message, overrideUseMsgAttrs)
 	if err != nil {
 		return nil, nil, err
-	}
-	err = v.verifyHeaders(message.Metadata.Headers)
-	if err != nil {
-		return nil, nil, err
-	}
-	schema := v.encoder.EncodeMessageType(message.Type, message.DataSchemaVersion)
-	metaAttrs := MetaAttributes{
-		message.Metadata.Timestamp,
-		message.Metadata.Publisher,
-		message.Metadata.Headers,
-		message.ID,
-		schema,
-		v.currentFormatVersion,
-	}
-	messagePayload, err := v.encoder.EncodeData(message.Data, v.useTransportMessageAttributes, metaAttrs)
-	if err != nil {
-		return nil, nil, err
-	}
-	var attributes map[string]string
-	if v.useTransportMessageAttributes {
-		attributes = v.encodeMetaAttributes(metaAttrs)
-	} else {
-		attributes = message.Metadata.Headers
 	}
 	// validate payload from scratch before publishing
-	_, err = v.deserialize(messagePayload, attributes, nil)
+	_, err = v.deserialize(messagePayload, attributes, nil, overrideUseMsgAttrs)
 	if err != nil {
 		return nil, nil, err
 	}
 	return messagePayload, attributes, nil
 }
 
-func (v *messageValidator) deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}) (*Message, error) {
+func (v *messageValidator) deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}, overrideUseMsgAttrs *bool) (*Message, error) {
 	var metaAttrs MetaAttributes
 	var data interface{}
 	var err error
-	if v.useTransportMessageAttributes {
+	shouldRunWithMessageAttributes := v.useTransportMessageAttributes
+	if overrideUseMsgAttrs != nil {
+		shouldRunWithMessageAttributes = *overrideUseMsgAttrs
+	}
+	if shouldRunWithMessageAttributes {
 		metaAttrs, err = v.decodeMetaAttributes(attributes)
 		if err != nil {
 			return nil, err

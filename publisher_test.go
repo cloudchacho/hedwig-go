@@ -23,7 +23,7 @@ func (s *PublisherTestSuite) TestPublish() {
 	payload := []byte(`{"type": "user-created"}`)
 	headers := map[string]string{}
 
-	s.serializer.On("serialize", message).
+	s.serializer.On("serialize", message, (*bool)(nil)).
 		Return(payload, headers, nil)
 
 	messageID := "123"
@@ -50,7 +50,7 @@ func (s *PublisherTestSuite) TestPublishTopicError() {
 	payload := []byte(`{"type": "user-created"}`)
 	headers := map[string]string{}
 
-	s.serializer.On("serialize", message).
+	s.serializer.On("serialize", message, (*bool)(nil)).
 		Return(payload, headers, nil)
 
 	_, err = s.publisher.Publish(ctx, message)
@@ -68,7 +68,7 @@ func (s *PublisherTestSuite) TestPublishSerializeError() {
 	message, err := NewMessage("user-created", "2.0", nil, &data, "myapp")
 	s.Require().NoError(err)
 
-	s.serializer.On("serialize", message).
+	s.serializer.On("serialize", message, (*bool)(nil)).
 		Return([]byte(""), map[string]string{}, errors.New("failed to serialize"))
 
 	_, err = s.publisher.Publish(ctx, message)
@@ -101,7 +101,7 @@ func (s *PublisherTestSuite) TestPublishSendsTraceID() {
 	instrumenter.On("OnPublish", ctx, message, headers).
 		Return(instrumentedCtx, instrumentedHeaders, func() { called = true })
 
-	s.serializer.On("serialize", message).
+	s.serializer.On("serialize", message, (*bool)(nil)).
 		Return(payload, headers, nil)
 
 	messageID := "123"
@@ -140,8 +140,8 @@ type fakeSerializer struct {
 	mock.Mock
 }
 
-func (f *fakeSerializer) serialize(message *Message) ([]byte, map[string]string, error) {
-	args := f.Called(message)
+func (f *fakeSerializer) serialize(message *Message, overrideUseMsgAttrs *bool) ([]byte, map[string]string, error) {
+	args := f.Called(message, overrideUseMsgAttrs)
 	return args.Get(0).([]byte), args.Get(1).(map[string]string), args.Error(2)
 }
 
