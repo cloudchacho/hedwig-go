@@ -46,7 +46,7 @@ func (p *Publisher) WithInstrumenter(instrumenter Instrumenter) {
 }
 
 type serializer interface {
-	serialize(message *Message, runWithTransportMessageAttributes *bool) ([]byte, map[string]string, error)
+	serialize(message *Message, overrideUseMsgAttrs *bool) ([]byte, map[string]string, error)
 	withUseTransportMessageAttributes(useTransportMessageAttributes bool)
 }
 

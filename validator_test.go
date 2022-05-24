@@ -342,7 +342,7 @@ func (s *ValidatorTestSuite) TestGetPayloadandAttributes() {
 	s.decoder.On("ExtractData", payload, map[string]string{"foo": "bar"}).Return(s.metaAttrs, payload, nil)
 	s.decoder.On("ExtractData", payload, map[string]string{}).Return(s.metaAttrs, payload, nil)
 	s.validator.useTransportMessageAttributes = false
-	res, attrs, err := s.validator.getPayloadandAttributes(s.message, nil)
+	res, attrs, err := s.validator.getPayloadAndAttributes(s.message, nil)
 	s.Nil(err)
 	expected := []byte("user-created/1.0 C_123")
 	s.Equal(res, expected)

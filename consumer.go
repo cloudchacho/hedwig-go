@@ -172,7 +172,7 @@ func wrapCallback(function CallbackFunction) CallbackFunction {
 }
 
 type deserializer interface {
-	deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}, runWithTransportMessageAttributes *bool) (*Message, error)
+	deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}, overrideUseMsgAttrs *bool) (*Message, error)
 	withUseTransportMessageAttributes(useTransportMessageAttributes bool)
 }
 

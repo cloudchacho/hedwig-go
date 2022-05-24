@@ -140,8 +140,8 @@ type fakeSerializer struct {
 	mock.Mock
 }
 
-func (f *fakeSerializer) serialize(message *Message, runWithTransportMessageAttributes *bool) ([]byte, map[string]string, error) {
-	args := f.Called(message, runWithTransportMessageAttributes)
+func (f *fakeSerializer) serialize(message *Message, overrideUseMsgAttrs *bool) ([]byte, map[string]string, error) {
+	args := f.Called(message, overrideUseMsgAttrs)
 	return args.Get(0).([]byte), args.Get(1).(map[string]string), args.Error(2)
 }
 

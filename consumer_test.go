@@ -360,8 +360,8 @@ type fakeDeserializer struct {
 	mock.Mock
 }
 
-func (f *fakeDeserializer) deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}, runWithTransportMessageAttributes *bool) (*Message, error) {
-	args := f.Called(messagePayload, attributes, providerMetadata, runWithTransportMessageAttributes)
+func (f *fakeDeserializer) deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}, overrideUseMsgAttrs *bool) (*Message, error) {
+	args := f.Called(messagePayload, attributes, providerMetadata, overrideUseMsgAttrs)
 	return args.Get(0).(*Message), args.Error(1)
 }
 

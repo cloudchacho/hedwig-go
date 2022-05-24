@@ -27,10 +27,10 @@ type messageValidator struct {
 	useTransportMessageAttributes bool
 }
 
-func (v *messageValidator) getPayloadandAttributes(message *Message, runWithTransportMessageAttributes *bool) ([]byte, map[string]string, error) {
+func (v *messageValidator) getPayloadAndAttributes(message *Message, overrideUseMsgAttrs *bool) ([]byte, map[string]string, error) {
 	shouldRunWithMessageAttributes := v.useTransportMessageAttributes
-	if runWithTransportMessageAttributes != nil {
-		shouldRunWithMessageAttributes = *runWithTransportMessageAttributes
+	if overrideUseMsgAttrs != nil {
+		shouldRunWithMessageAttributes = *overrideUseMsgAttrs
 	}
 	err := v.encoder.VerifyKnownMinorVersion(message.Type, message.DataSchemaVersion)
 	if err != nil {
@@ -124,26 +124,26 @@ func (v *messageValidator) encodeMetaAttributes(metaAttrs MetaAttributes) map[st
 	return attributes
 }
 
-func (v *messageValidator) serialize(message *Message, runWithTransportMessageAttributes *bool) ([]byte, map[string]string, error) {
-	messagePayload, attributes, err := v.getPayloadandAttributes(message, runWithTransportMessageAttributes)
+func (v *messageValidator) serialize(message *Message, overrideUseMsgAttrs *bool) ([]byte, map[string]string, error) {
+	messagePayload, attributes, err := v.getPayloadAndAttributes(message, overrideUseMsgAttrs)
 	if err != nil {
 		return nil, nil, err
 	}
 	// validate payload from scratch before publishing
-	_, err = v.deserialize(messagePayload, attributes, nil, runWithTransportMessageAttributes)
+	_, err = v.deserialize(messagePayload, attributes, nil, overrideUseMsgAttrs)
 	if err != nil {
 		return nil, nil, err
 	}
 	return messagePayload, attributes, nil
 }
 
-func (v *messageValidator) deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}, runWithTransportMessageAttributes *bool) (*Message, error) {
+func (v *messageValidator) deserialize(messagePayload []byte, attributes map[string]string, providerMetadata interface{}, overrideUseMsgAttrs *bool) (*Message, error) {
 	var metaAttrs MetaAttributes
 	var data interface{}
 	var err error
 	shouldRunWithMessageAttributes := v.useTransportMessageAttributes
-	if runWithTransportMessageAttributes != nil {
-		shouldRunWithMessageAttributes = *runWithTransportMessageAttributes
+	if overrideUseMsgAttrs != nil {
+		shouldRunWithMessageAttributes = *overrideUseMsgAttrs
 	}
 	if shouldRunWithMessageAttributes {
 		metaAttrs, err = v.decodeMetaAttributes(attributes)

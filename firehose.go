@@ -13,7 +13,7 @@ type Firehose struct {
 }
 
 func (f *Firehose) Deserialize(reader io.Reader) ([]Message, error) {
-	runWithTransportMessageAttributes := false
+	overrideUseMsgAttrs := false
 	var messages []Message
 	if f.messageValidator.encoder.IsBinary() {
 		var messagePayload []byte
@@ -32,12 +32,12 @@ func (f *Firehose) Deserialize(reader io.Reader) ([]Message, error) {
 			if len(messagePayload) < int(msgLength) {
 				messagePayload = append(messagePayload, make([]byte, int(msgLength)-len(messagePayload))...)
 			}
-			_, err = reader.Read(messagePayload)
+			_, err = reader.Read(messagePayload[:msgLength])
 			if err != nil && err != io.EOF {
 				return nil, err
 			}
 
-			res, err := f.messageValidator.deserialize(messagePayload, nil, nil, &runWithTransportMessageAttributes)
+			res, err := f.messageValidator.deserialize(messagePayload, nil, nil, &overrideUseMsgAttrs)
 			if err != nil {
 				return nil, err
 			}
@@ -52,7 +52,7 @@ func (f *Firehose) Deserialize(reader io.Reader) ([]Message, error) {
 			}
 			messagePayload := s.Bytes()
 
-			res, err := f.messageValidator.deserialize(messagePayload, nil, nil, &runWithTransportMessageAttributes)
+			res, err := f.messageValidator.deserialize(messagePayload, nil, nil, &overrideUseMsgAttrs)
 			if err != nil {
 				return nil, err
 			}
@@ -64,8 +64,8 @@ func (f *Firehose) Deserialize(reader io.Reader) ([]Message, error) {
 }
 
 func (f *Firehose) Serialize(message *Message) ([]byte, error) {
-	runWithTransportMessageAttributes := false
-	messagePayload, _, err := f.messageValidator.serialize(message, &runWithTransportMessageAttributes)
+	overrideUseMsgAttrs := false
+	messagePayload, _, err := f.messageValidator.serialize(message, &overrideUseMsgAttrs)
 	if err != nil {
 		return nil, err
 	}
