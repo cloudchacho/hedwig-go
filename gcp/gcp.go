@@ -149,7 +149,7 @@ func (b *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 	pubsubSubscription.ReceiveSettings.MaxExtensionPeriod = clientTopic.PublishSettings.Timeout
 
 	// run a ticker that will fire after timeout and shutdown subscriber
-	overallTimeout := time.Second * 5
+	overallTimeout := time.Second * 30
 	ticker := time.NewTicker(overallTimeout)
 	defer ticker.Stop()
 
