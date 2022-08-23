@@ -187,7 +187,7 @@ func (b *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 		}
 	}()
 
-	publishErrCh := make(chan error, 10)
+	publishErrCh := make(chan error, 1)
 	defer close(publishErrCh)
 	err = pubsubSubscription.Receive(rctx, func(ctx context.Context, message *pubsub.Message) {
 		ticker.Reset(overallTimeout)
@@ -196,7 +196,14 @@ func (b *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 		if err != nil {
 			message.Nack()
 			cancel()
-			publishErrCh <- err
+			if err != context.Canceled {
+				// try to send but since channel is buffered, this may not work, ignore since we anyway only want just
+				// one error
+				select {
+				case publishErrCh <- err:
+				default:
+				}
+			}
 		} else {
 			message.Ack()
 			atomic.AddUint32(&numMessagesRequeued, 1)
@@ -211,8 +218,8 @@ func (b *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 		return err
 	default:
 	}
-	// context cancelation doesn't return error in Receive, don't return error from rctx since cancelation is happy
-	// path
+	// context cancelation doesn't return error in Receive, don't return error from rctx since cancelation of rctx is
+	// happy path
 	return ctx.Err()
 }
 
