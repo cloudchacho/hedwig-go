@@ -147,7 +147,7 @@ func (s *BackendTestSuite) TestReceiveNoDLQSetup() {
 		GoogleCloudProject: "emulator-project",
 		QueueName:          "dev-myapp",
 		// dlq sub does not have a dlq policy so Delivery attempt should be nil
-		Subscriptions:      []string{"dlq"},
+		Subscriptions: []string{"dlq"},
 	}
 	backend := gcp.NewBackend(settings, logger)
 
