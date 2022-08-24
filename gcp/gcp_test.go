@@ -273,6 +273,7 @@ func (s *BackendTestSuite) TestReceiveError() {
 func (s *BackendTestSuite) TestRequeueDLQ() {
 	ctx := context.Background()
 	numMessages := uint32(10)
+	numConcurrency := uint32(10)
 	visibilityTimeout := time.Second * 10
 
 	payload := []byte(`{"vehicle_id": "C_123"}`)
@@ -292,7 +293,7 @@ func (s *BackendTestSuite) TestRequeueDLQ() {
 	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*200)
 	defer cancel()
 	testutils.RunAndWait(func() {
-		err = s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
+		err = s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout, numConcurrency)
 		s.True(err.Error() == "draining" || err == context.DeadlineExceeded)
 	})
 
@@ -318,12 +319,13 @@ func (s *BackendTestSuite) TestRequeueDLQ() {
 
 func (s *BackendTestSuite) TestRequeueDLQNoMessages() {
 	numMessages := uint32(10)
+	numConcurrency := uint32(10)
 	visibilityTimeout := time.Second * 10
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
 	defer cancel()
 	testutils.RunAndWait(func() {
-		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
+		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout, numConcurrency)
 		s.True(err == context.DeadlineExceeded)
 	})
 }
@@ -331,6 +333,7 @@ func (s *BackendTestSuite) TestRequeueDLQNoMessages() {
 func (s *BackendTestSuite) TestRequeueDLQReceiveError() {
 	ctx := context.Background()
 	numMessages := uint32(10)
+	numConcurrency := uint32(10)
 	visibilityTimeout := time.Second * 10
 
 	s.settings.QueueName = "does-not-exist"
@@ -339,7 +342,7 @@ func (s *BackendTestSuite) TestRequeueDLQReceiveError() {
 	backend := gcp.NewBackend(s.settings, nil)
 
 	testutils.RunAndWait(func() {
-		err := backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
+		err := backend.RequeueDLQ(ctx, numMessages, visibilityTimeout, numConcurrency)
 		s.EqualError(err, "rpc error: code = NotFound desc = Subscription does not exist (resource=hedwig-does-not-exist-dlq)")
 	})
 }
@@ -347,6 +350,7 @@ func (s *BackendTestSuite) TestRequeueDLQReceiveError() {
 func (s *BackendTestSuite) TestRequeueDLQPublishError() {
 	ctx := context.Background()
 	numMessages := uint32(10)
+	numConcurrency := uint32(10)
 	visibilityTimeout := time.Second * 10
 
 	payload := []byte(`{"vehicle_id": "C_123"}`)
@@ -361,7 +365,7 @@ func (s *BackendTestSuite) TestRequeueDLQPublishError() {
 	s.Require().NoError(err)
 
 	testutils.RunAndWait(func() {
-		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
+		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout, numConcurrency)
 		s.EqualError(err, "rpc error: code = NotFound desc = Topic not found")
 	})
 }

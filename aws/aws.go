@@ -222,7 +222,7 @@ func (b *Backend) Receive(ctx context.Context, numMessages uint32, visibilityTim
 }
 
 // RequeueDLQ re-queues everything in the Hedwig DLQ back into the Hedwig queue
-func (b *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration) error {
+func (b *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, _ uint32) error {
 	queueURL, err := b.getSQSQueueURL(ctx)
 	if err != nil {
 		return errors.Wrap(err, "failed to get SQS Queue URL")
