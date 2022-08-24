@@ -136,6 +136,58 @@ func (s *BackendTestSuite) TestReceive() {
 	}
 }
 
+func (s *BackendTestSuite) TestReceiveNoDLQSetup() {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*200)
+	defer cancel()
+	numMessages := uint32(10)
+	visibilityTimeout := time.Second * 10
+	logger := &fakeLogger{}
+
+	settings := gcp.Settings{
+		GoogleCloudProject: "emulator-project",
+		QueueName:          "dev-myapp",
+		// dlq sub does not have a dlq policy so Delivery attempt should be nil
+		Subscriptions: []string{"dlq"},
+	}
+	backend := gcp.NewBackend(settings, logger)
+
+	payload := []byte(`{"vehicle_id": "C_123"}`)
+	attributes := map[string]string{
+		"foo": "bar",
+	}
+	err := s.publish(payload, attributes, "hedwig-dev-myapp-dlq", "")
+	s.Require().NoError(err)
+
+	m := mock.Mock{}
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for receivedMessage := range s.messageCh {
+			m.MethodCalled("MessageReceived", receivedMessage.Payload, receivedMessage.Attributes, receivedMessage.ProviderMetadata)
+		}
+	}()
+	m.On("MessageReceived", payload, attributes, mock.AnythingOfType("gcp.Metadata")).
+		// message must be acked or Receive never returns
+		Run(func(args mock.Arguments) {
+			err := backend.AckMessage(ctx, args.Get(2))
+			s.Require().NoError(err)
+		}).
+		Return().
+		Once()
+
+	testutils.RunAndWait(func() {
+		err = backend.Receive(ctx, numMessages, visibilityTimeout, s.messageCh)
+		close(s.messageCh)
+	})
+	wg.Wait()
+
+	if m.AssertExpectations(s.T()) {
+		providerMetadata := m.Calls[0].Arguments.Get(2).(gcp.Metadata)
+		s.Equal(-1, providerMetadata.DeliveryAttempt)
+	}
+}
+
 func (s *BackendTestSuite) TestReceiveCrossProject() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
 	defer cancel()
