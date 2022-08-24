@@ -149,10 +149,7 @@ func (s *BackendTestSuite) TestReceiveNoDLQSetup() {
 		// dlq sub does not have a dlq policy so Delivery attempt should be nil
 		Subscriptions:      []string{"dlq"},
 	}
-	getLogger := func(_ context.Context) hedwig.Logger {
-		return logger
-	}
-	backend := gcp.NewBackend(settings, getLogger)
+	backend := gcp.NewBackend(settings, logger)
 
 	payload := []byte(`{"vehicle_id": "C_123"}`)
 	attributes := map[string]string{
@@ -180,8 +177,7 @@ func (s *BackendTestSuite) TestReceiveNoDLQSetup() {
 		Once()
 
 	testutils.RunAndWait(func() {
-		err := backend.Receive(ctx, numMessages, visibilityTimeout, s.messageCh)
-		s.True(err.Error() == "draining" || err == context.Canceled)
+		err = backend.Receive(ctx, numMessages, visibilityTimeout, s.messageCh)
 		close(s.messageCh)
 	})
 	wg.Wait()
