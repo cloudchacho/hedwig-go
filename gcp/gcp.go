@@ -102,6 +102,10 @@ func (b *Backend) Receive(ctx context.Context, numMessages uint32, visibilityTim
 		}
 		group.Go(func() error {
 			recvErr := pubsubSubscription.Receive(gctx, func(ctx context.Context, message *pubsub.Message) {
+				deliveryAttemptDefault := -1
+				if message.DeliveryAttempt == nil {
+					message.DeliveryAttempt = &deliveryAttemptDefault
+				}
 				metadata := Metadata{
 					pubsubMessage:   message,
 					PublishTime:     message.PublishTime,
