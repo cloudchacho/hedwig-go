@@ -131,7 +131,7 @@ func (b *Backend) Receive(ctx context.Context, numMessages uint32, visibilityTim
 }
 
 // RequeueDLQ re-queues everything in the Hedwig DLQ back into the Hedwig queue
-func (b *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration) error {
+func (b *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, numConcurrency uint32) error {
 	err := b.ensureClient(ctx)
 	if err != nil {
 		return err
@@ -143,6 +143,8 @@ func (b *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 	defer clientTopic.Stop()
 
 	clientTopic.PublishSettings.CountThreshold = int(numMessages)
+	clientTopic.PublishSettings.FlowControlSettings.MaxOutstandingMessages = int(numMessages)
+	clientTopic.PublishSettings.NumGoroutines = int(numConcurrency)
 	if visibilityTimeout != 0 {
 		clientTopic.PublishSettings.Timeout = visibilityTimeout
 	} else {
@@ -152,6 +154,7 @@ func (b *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 	pubsubSubscription := b.client.Subscription(fmt.Sprintf("hedwig-%s-dlq", b.settings.QueueName))
 	pubsubSubscription.ReceiveSettings.MaxOutstandingMessages = int(numMessages)
 	pubsubSubscription.ReceiveSettings.MaxExtensionPeriod = clientTopic.PublishSettings.Timeout
+	pubsubSubscription.ReceiveSettings.NumGoroutines = int(numConcurrency)
 
 	// run a ticker that will fire after timeout and shutdown subscriber
 	overallTimeout := time.Second * 30
