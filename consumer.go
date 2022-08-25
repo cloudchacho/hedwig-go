@@ -136,7 +136,7 @@ func (c *QueueConsumer) RequeueDLQ(ctx context.Context, request ListenRequest) e
 		request.NumMessages = 1
 	}
 
-	return c.backend.RequeueDLQ(ctx, request.NumMessages, request.VisibilityTimeout)
+	return c.backend.RequeueDLQ(ctx, request.NumMessages, request.VisibilityTimeout, request.NumConcurrency)
 }
 
 func (c *QueueConsumer) WithInstrumenter(instrumenter Instrumenter) *QueueConsumer {
@@ -217,7 +217,7 @@ type ConsumerBackend interface {
 	//HandleLambdaEvent(ctx context.Context, settings *Settings, snsEvent events.SNSEvent) error
 
 	// RequeueDLQ re-queues everything in the Hedwig DLQ back into the Hedwig queue
-	RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration) error
+	RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, numConcurrency uint32) error
 }
 
 // ReceivedMessage is the message as received by a transport backend.

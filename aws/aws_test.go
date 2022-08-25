@@ -489,6 +489,7 @@ func (s *BackendTestSuite) TestRequeueDLQ() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
 	defer cancel()
 	numMessages := uint32(10)
+	numConcurrency := uint32(10)
 	visibilityTimeout := time.Second * 10
 
 	queueName := "HEDWIG-DEV-MYAPP"
@@ -621,7 +622,7 @@ func (s *BackendTestSuite) TestRequeueDLQ() {
 		})
 
 	testutils.RunAndWait(func() {
-		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
+		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout, numConcurrency)
 		s.EqualError(err, "context canceled")
 	})
 
@@ -632,6 +633,7 @@ func (s *BackendTestSuite) TestRequeueDLQNoMessages() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
 	defer cancel()
 	numMessages := uint32(10)
+	numConcurrency := uint32(10)
 	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
 	queueURL := "https://sqs.us-east-1.amazonaws.com/686176732873/" + queueName
@@ -672,7 +674,7 @@ func (s *BackendTestSuite) TestRequeueDLQNoMessages() {
 		})
 
 	testutils.RunAndWait(func() {
-		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
+		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout, numConcurrency)
 		s.NoError(err)
 	})
 
@@ -685,6 +687,7 @@ func (s *BackendTestSuite) TestRequeueDLQReceiveError() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
 	defer cancel()
 	numMessages := uint32(10)
+	numConcurrency := uint32(10)
 	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
 	queueURL := "https://sqs.us-east-1.amazonaws.com/686176732873/" + queueName
@@ -723,7 +726,7 @@ func (s *BackendTestSuite) TestRequeueDLQReceiveError() {
 		})
 
 	testutils.RunAndWait(func() {
-		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
+		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout, numConcurrency)
 		s.EqualError(err, "failed to receive SQS message: no internet")
 	})
 
@@ -736,6 +739,7 @@ func (s *BackendTestSuite) TestRequeueDLQPublishError() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
 	defer cancel()
 	numMessages := uint32(10)
+	numConcurrency := uint32(10)
 	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
 	queueURL := "https://sqs.us-east-1.amazonaws.com/686176732873/" + queueName
@@ -810,7 +814,7 @@ func (s *BackendTestSuite) TestRequeueDLQPublishError() {
 		})
 
 	testutils.RunAndWait(func() {
-		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
+		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout, numConcurrency)
 		s.EqualError(err, "failed to send messages: no internet")
 	})
 
@@ -823,6 +827,7 @@ func (s *BackendTestSuite) TestRequeueDLQPublishPartialError() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
 	defer cancel()
 	numMessages := uint32(10)
+	numConcurrency := uint32(10)
 	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
 	queueURL := "https://sqs.us-east-1.amazonaws.com/686176732873/" + queueName
@@ -903,7 +908,7 @@ func (s *BackendTestSuite) TestRequeueDLQPublishPartialError() {
 		})
 
 	testutils.RunAndWait(func() {
-		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
+		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout, numConcurrency)
 		s.EqualError(err, "failed to send some messages")
 	})
 
@@ -916,6 +921,7 @@ func (s *BackendTestSuite) TestRequeueDLQDeleteError() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
 	defer cancel()
 	numMessages := uint32(10)
+	numConcurrency := uint32(10)
 	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
 	queueURL := "https://sqs.us-east-1.amazonaws.com/686176732873/" + queueName
@@ -1011,7 +1017,7 @@ func (s *BackendTestSuite) TestRequeueDLQDeleteError() {
 		})
 
 	testutils.RunAndWait(func() {
-		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
+		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout, numConcurrency)
 		s.EqualError(err, "failed to ack messages: no internet")
 	})
 
@@ -1024,6 +1030,7 @@ func (s *BackendTestSuite) TestRequeueDLQDeletePartialError() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
 	defer cancel()
 	numMessages := uint32(10)
+	numConcurrency := uint32(10)
 	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
 	queueURL := "https://sqs.us-east-1.amazonaws.com/686176732873/" + queueName
@@ -1125,7 +1132,7 @@ func (s *BackendTestSuite) TestRequeueDLQDeletePartialError() {
 		})
 
 	testutils.RunAndWait(func() {
-		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
+		err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout, numConcurrency)
 		s.EqualError(err, "failed to ack some messages")
 	})
 
@@ -1137,6 +1144,7 @@ func (s *BackendTestSuite) TestRequeueDLQDeletePartialError() {
 func (s *BackendTestSuite) TestRequeueDLQGetQueueError() {
 	ctx := context.Background()
 	numMessages := uint32(10)
+	numConcurrency := uint32(10)
 	visibilityTimeout := time.Second * 10
 	queueName := "HEDWIG-DEV-MYAPP"
 	queueInput := &sqs.GetQueueUrlInput{
@@ -1145,7 +1153,7 @@ func (s *BackendTestSuite) TestRequeueDLQGetQueueError() {
 	s.fakeSQS.On("GetQueueUrlWithContext", ctx, queueInput, mock.Anything).
 		Return((*sqs.GetQueueUrlOutput)(nil), errors.New("no internet"))
 
-	err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout)
+	err := s.backend.RequeueDLQ(ctx, numMessages, visibilityTimeout, numConcurrency)
 	s.EqualError(err, "failed to get SQS Queue URL: no internet")
 
 	s.fakeSQS.AssertExpectations(s.T())

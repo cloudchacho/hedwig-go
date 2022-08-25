@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -205,7 +205,7 @@ func NewEncoderDecoderFromBytes(schemaFile []byte, dataRegistry DataFactoryRegis
 
 // NewMessageEncoderDecoder creates a new encoder from the given file
 func NewMessageEncoderDecoder(schemaFilePath string, dataRegistry DataFactoryRegistry) (*EncoderDecoder, error) {
-	rawSchema, err := ioutil.ReadFile(schemaFilePath)
+	rawSchema, err := os.ReadFile(schemaFilePath)
 	if err != nil {
 		return nil, err
 	}
