@@ -78,6 +78,56 @@ func (s *FirehoseTestSuite) TestSerializeFirehoseError() {
 	s.EqualError(err, "bad version")
 }
 
+func (s *FirehoseTestSuite) TestDeSerializeFirehoseUnequalLen() {
+	s.encoder.On("IsBinary").Return(true)
+	// first 8 bytes is length of message (22) in this case
+	payload := []byte("user-created/1.0 C_123")
+	schema := "user-created/1.0"
+	payload2 := []byte("user-created/1.0 C_123456789")
+	message2, err := NewMessage(
+		"user-created", "1.0", map[string]string{"foo": "bar2"}, fakeHedwigDataField{VehicleID: "C_123456789"}, "myapp")
+	message2.Metadata.Timestamp = time.Unix(1621550514, 123000000)
+	metaAttrs2 := MetaAttributes{
+		message2.Metadata.Timestamp,
+		message2.Metadata.Publisher,
+		message2.Metadata.Headers,
+		message2.ID,
+		schema,
+		semver.MustParse("1.0"),
+	}
+	require.NoError(s.T(), err)
+
+	s.encoder.On("VerifyKnownMinorVersion", s.message.Type, s.message.DataSchemaVersion).Return(nil)
+	s.encoder.On("EncodeMessageType", s.message.Type, s.message.DataSchemaVersion).Return(schema)
+	s.encoder.On("EncodeData", s.message.Data, false, s.metaAttrs).
+		Return(payload, nil)
+	s.encoder.On("EncodeData", message2.Data, false, metaAttrs2).
+		Return(payload2, nil)
+
+	s.decoder.On("ExtractData", payload, map[string]string(nil)).Return(s.metaAttrs, payload, nil)
+	s.decoder.On("ExtractData", payload, map[string]string{"foo": "bar"}).Return(s.metaAttrs, payload, nil)
+	s.decoder.On("ExtractData", payload2, map[string]string{"foo": "bar2"}).Return(metaAttrs2, payload2, nil)
+	s.decoder.On("ExtractData", payload2, map[string]string(nil)).Return(metaAttrs2, payload2, nil)
+	s.decoder.On("DecodeMessageType", schema).Return(s.message.Type, s.message.DataSchemaVersion, nil)
+	s.decoder.On("DecodeData", s.message.Type, s.message.DataSchemaVersion, payload).
+		Return(s.message.Data, nil)
+	s.decoder.On("DecodeData", s.message.Type, s.message.DataSchemaVersion, payload2).
+		Return(message2.Data, nil)
+	line, err := s.firehose.Serialize(s.message)
+	require.NoError(s.T(), err)
+	line2, err := s.firehose.Serialize(message2)
+	require.NoError(s.T(), err)
+	multiple := append(line2, line...)
+	r := bytes.NewReader(multiple)
+	s.Nil(err)
+	res, err := s.firehose.Deserialize(r)
+	s.Nil(err)
+	s.Equal(len(res), 2)
+	s.Equal(res[0], *message2)
+	s.Equal(res[1], *s.message)
+
+}
+
 func (s *FirehoseTestSuite) TestDeSerializeFirehose() {
 	s.encoder.On("IsBinary").Return(true)
 	// first 8 bytes is length of message (22) in this case
