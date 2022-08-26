@@ -3,6 +3,7 @@ package gcp
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -148,6 +149,11 @@ func (b *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 	} else {
 		clientTopic.PublishSettings.Timeout = defaultVisibilityTimeoutS
 	}
+
+	// PublishSettings.BufferedByteLimit does not have an unlimited. Mimic what is
+	// being set here in the library when PublishSettings.FlowControlSettings.MaxOutstandingBytes is set
+	// ref: https://github.com/googleapis/google-cloud-go/blob/d8b933189d677e987f408fa45b50d134a418e2b0/pubsub/topic.go#L654
+	clientTopic.PublishSettings.BufferedByteLimit = math.MaxInt64
 
 	pubsubSubscription := b.client.Subscription(fmt.Sprintf("hedwig-%s-dlq", b.settings.QueueName))
 	pubsubSubscription.ReceiveSettings.MaxOutstandingMessages = int(numMessages)
