@@ -16,8 +16,8 @@ func (f *Firehose) Deserialize(reader io.Reader) ([]Message, error) {
 	overrideUseMsgAttrs := false
 	var messages []Message
 	if f.messageValidator.encoder.IsBinary() {
+		var messagePayload []byte
 		for {
-			var messagePayload []byte
 			// TLV format: 8 bytes for size of message, n bytes for the actual message
 			msgSize := make([]byte, 8)
 			l, err := reader.Read(msgSize)
@@ -37,7 +37,7 @@ func (f *Firehose) Deserialize(reader io.Reader) ([]Message, error) {
 				return nil, err
 			}
 
-			res, err := f.messageValidator.deserialize(messagePayload, nil, nil, &overrideUseMsgAttrs)
+			res, err := f.messageValidator.deserialize(messagePayload[:msgLength], nil, nil, &overrideUseMsgAttrs)
 			if err != nil {
 				return nil, err
 			}
