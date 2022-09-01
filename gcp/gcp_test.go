@@ -133,7 +133,7 @@ func (s *BackendTestSuite) TestReceive() {
 	if m.AssertExpectations(s.T()) {
 		providerMetadata := m.Calls[0].Arguments.Get(2).(gcp.Metadata)
 		s.Equal(1, providerMetadata.DeliveryAttempt)
-		s.Equal("dev-user-created-v1", providerMetadata.SubscriptionName)
+		s.Equal("dev-myapp-dev-user-created-v1", providerMetadata.SubscriptionName)
 	}
 }
 

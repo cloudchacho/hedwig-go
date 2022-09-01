@@ -117,7 +117,7 @@ func (b *Backend) Receive(ctx context.Context, numMessages uint32, visibilityTim
 					pubsubMessage:    message,
 					PublishTime:      message.PublishTime,
 					DeliveryAttempt:  *message.DeliveryAttempt,
-					SubscriptionName: strings.Replace(subID, "hedwig", "", 1),
+					SubscriptionName: strings.Replace(subID, "hedwig-", "", 1),
 				}
 				messageCh <- hedwig.ReceivedMessage{
 					Payload:          message.Data,
