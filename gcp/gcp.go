@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -40,6 +41,9 @@ type Metadata struct {
 	//    The first delivery of a given message will have this value as 1. The value
 	//    is calculated as best effort and is approximate.
 	DeliveryAttempt int
+
+	// The name of the subscription the message was received from
+	SubscriptionName string
 }
 
 // Publish a message represented by the payload, with specified attributes to the specific topic
@@ -94,6 +98,7 @@ func (b *Backend) Receive(ctx context.Context, numMessages uint32, visibilityTim
 
 	for _, subscription := range subscriptions {
 		pubsubSubscription := b.client.Subscription(subscription)
+		subID := pubsubSubscription.ID()
 		pubsubSubscription.ReceiveSettings.NumGoroutines = 1
 		pubsubSubscription.ReceiveSettings.MaxOutstandingMessages = int(numMessages)
 		if visibilityTimeout != 0 {
@@ -109,9 +114,10 @@ func (b *Backend) Receive(ctx context.Context, numMessages uint32, visibilityTim
 					message.DeliveryAttempt = &deliveryAttemptDefault
 				}
 				metadata := Metadata{
-					pubsubMessage:   message,
-					PublishTime:     message.PublishTime,
-					DeliveryAttempt: *message.DeliveryAttempt,
+					pubsubMessage:    message,
+					PublishTime:      message.PublishTime,
+					DeliveryAttempt:  *message.DeliveryAttempt,
+					SubscriptionName: strings.Replace(subID, "hedwig", "", 1),
 				}
 				messageCh <- hedwig.ReceivedMessage{
 					Payload:          message.Data,
