@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"strings"
+	"regexp"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -94,6 +94,7 @@ func (b *Backend) Receive(ctx context.Context, numMessages uint32, visibilityTim
 	subscriptionName := fmt.Sprintf("hedwig-%s", b.settings.QueueName)
 	subscriptions = append(subscriptions, subscriptionName)
 
+	hedwigRe := regexp.MustCompile(`^hedwig-`)
 	group, gctx := errgroup.WithContext(ctx)
 
 	for _, subscription := range subscriptions {
@@ -117,7 +118,7 @@ func (b *Backend) Receive(ctx context.Context, numMessages uint32, visibilityTim
 					pubsubMessage:    message,
 					PublishTime:      message.PublishTime,
 					DeliveryAttempt:  *message.DeliveryAttempt,
-					SubscriptionName: strings.Replace(subID, "hedwig-", "", 1),
+					SubscriptionName: hedwigRe.ReplaceAllString(subID, ""),
 				}
 				messageCh <- hedwig.ReceivedMessage{
 					Payload:          message.Data,
