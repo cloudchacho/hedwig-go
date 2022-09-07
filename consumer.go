@@ -218,6 +218,8 @@ type ConsumerBackend interface {
 
 	// RequeueDLQ re-queues everything in the Hedwig DLQ back into the Hedwig queue
 	RequeueDLQ(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, numConcurrency uint32) error
+
+	GetSubName(msg *Message) string
 }
 
 // ReceivedMessage is the message as received by a transport backend.

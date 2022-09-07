@@ -256,6 +256,11 @@ func (b *Backend) AckMessage(ctx context.Context, providerMetadata interface{}) 
 	return nil
 }
 
+// GetSubName returns the subscription the message is from
+func (b *Backend) GetSubName(msg *hedwig.Message) string {
+	return msg.Metadata.ProviderMetadata.(Metadata).SubscriptionName
+}
+
 func (b *Backend) ensureClient(ctx context.Context) error {
 	googleCloudProject := b.settings.GoogleCloudProject
 	if googleCloudProject == "" {

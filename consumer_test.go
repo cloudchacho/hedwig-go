@@ -50,6 +50,12 @@ type fakeBackend struct {
 	mock.Mock
 }
 
+func (b *fakeBackend) GetSubName(msg *Message) string {
+	// note: may have to change if you want this to do something in a test
+	args := b.Called(msg)
+	return args.String(0)
+}
+
 func (b *fakeBackend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, messageCh chan<- ReceivedMessage) error {
 	args := b.Called(ctx, numMessages, visibilityTimeout, messageCh)
 	return args.Error(0)

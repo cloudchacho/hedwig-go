@@ -315,6 +315,11 @@ func (b *Backend) AckMessage(ctx context.Context, providerMetadata interface{}) 
 	return err
 }
 
+// GetSubName returns the subscription the message is from
+func (b *Backend) GetSubName(msg *hedwig.Message) string {
+	panic("not implemented yet for aws")
+}
+
 // Settings for AWS Backend
 type Settings struct {
 	// AWS Region
