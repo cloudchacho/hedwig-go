@@ -32,7 +32,7 @@ func (f *Firehose) Deserialize(reader io.Reader) ([]Message, error) {
 			if len(messagePayload) < int(msgLength) {
 				messagePayload = append(messagePayload, make([]byte, int(msgLength)-len(messagePayload))...)
 			}
-			_, err = reader.Read(messagePayload[:msgLength])
+			_, err = io.ReadFull(reader, messagePayload[:msgLength])
 			if err != nil && err != io.EOF {
 				return nil, err
 			}
