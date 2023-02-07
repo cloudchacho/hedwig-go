@@ -74,7 +74,7 @@ func (b *Backend) Publish(ctx context.Context, message *hedwig.Message, payload 
 // Receive messages from configured queue(s) and provide it through the callback. This should run indefinitely
 // until the context is canceled. Provider metadata should include all info necessary to ack/nack a message.
 func (b *Backend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, messageCh chan<- hedwig.ReceivedMessage) error {
-	err := b.once.Do(func() { b.ensureClient(ctx) })
+	err := b.ensureClient(ctx)
 	if err != nil {
 		return err
 	}
