@@ -20,6 +20,7 @@ import (
 
 type Backend struct {
 	client   *pubsub.Client
+	once     sync.Once
 	settings Settings
 	logger   hedwig.Logger
 }
@@ -73,7 +74,7 @@ func (b *Backend) Publish(ctx context.Context, message *hedwig.Message, payload 
 // Receive messages from configured queue(s) and provide it through the callback. This should run indefinitely
 // until the context is canceled. Provider metadata should include all info necessary to ack/nack a message.
 func (b *Backend) Receive(ctx context.Context, numMessages uint32, visibilityTimeout time.Duration, messageCh chan<- hedwig.ReceivedMessage) error {
-	err := b.ensureClient(ctx)
+	err := b.once.Do(func() { b.ensureClient(ctx) })
 	if err != nil {
 		return err
 	}
@@ -257,27 +258,24 @@ func (b *Backend) AckMessage(ctx context.Context, providerMetadata interface{}) 
 }
 
 func (b *Backend) ensureClient(ctx context.Context) error {
-	googleCloudProject := b.settings.GoogleCloudProject
-	if googleCloudProject == "" {
-		creds, err := google.FindDefaultCredentials(ctx)
-		if err != nil {
-			return errors.Wrap(
-				err, "unable to discover google cloud project setting, either pass explicitly, or fix runtime environment")
-		} else if creds.ProjectID == "" {
-			return errors.New(
-				"unable to discover google cloud project setting, either pass explicitly, or fix runtime environment")
+	var err error
+	b.once.Do(func() {
+		googleCloudProject := b.settings.GoogleCloudProject
+		if googleCloudProject == "" {
+			var creds *google.Credentials
+			creds, err = google.FindDefaultCredentials(ctx)
+			if err != nil {
+				err = errors.Wrap(
+					err, "unable to discover google cloud project setting, either pass explicitly, or fix runtime environment")
+			} else if creds.ProjectID == "" {
+				err = errors.New(
+					"unable to discover google cloud project setting, either pass explicitly, or fix runtime environment")
+			}
+			googleCloudProject = creds.ProjectID
 		}
-		googleCloudProject = creds.ProjectID
-	}
-	if b.client != nil {
-		return nil
-	}
-	client, err := pubsub.NewClient(context.Background(), googleCloudProject, b.settings.PubsubClientOptions...)
-	if err != nil {
-		return err
-	}
-	b.client = client
-	return nil
+		b.client, err = pubsub.NewClient(context.Background(), googleCloudProject, b.settings.PubsubClientOptions...)
+	})
+	return err
 }
 
 // SubscriptionProject represents a tuple of subscription name and project for cross-project Google subscriptions
