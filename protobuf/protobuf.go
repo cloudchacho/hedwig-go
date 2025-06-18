@@ -211,7 +211,7 @@ func (ed *EncoderDecoder) DecodeMessageType(schema string) (string, *semver.Vers
 
 // ExtractData extracts data from the on-the-wire payload
 // Type of data will be *anypb.Any
-func (ed *EncoderDecoder) ExtractData(messagePayload []byte, attributes map[string]string) (hedwig.MetaAttributes, interface{}, error) {
+func (ed *EncoderDecoder) ExtractData(messagePayload []byte, _ map[string]string) (hedwig.MetaAttributes, interface{}, error) {
 	metaAttrs := hedwig.MetaAttributes{}
 	payload := PayloadV1{}
 	err := proto.Unmarshal(messagePayload, &payload)

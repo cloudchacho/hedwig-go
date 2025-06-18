@@ -64,7 +64,7 @@ func (s *EncoderTestSuite) TestEncodeDataContainerized() {
 	}
 	vehicleID := "C_123"
 	data := &internal.VehicleCreatedV1{VehicleId: &vehicleID}
-	any, err := anypb.New(data)
+	dataTyped, err := anypb.New(data)
 	s.Require().NoError(err)
 	payloadMsg := &protobuf.PayloadV1{
 		FormatVersion: "1.0",
@@ -75,7 +75,7 @@ func (s *EncoderTestSuite) TestEncodeDataContainerized() {
 			Headers:   metaAttrs.Headers,
 		},
 		Schema: metaAttrs.Schema,
-		Data:   any,
+		Data:   dataTyped,
 	}
 	payload, err := s.encoder.EncodeData(data, false, metaAttrs)
 	s.NoError(err)
@@ -102,7 +102,7 @@ func (s *EncoderTestSuite) TestEncodeDataFailInvalidData() {
 func (s *EncoderTestSuite) TestExtractData() {
 	vehicleID := "C_123"
 	data := &internal.VehicleCreatedV1{VehicleId: &vehicleID}
-	any, err := anypb.New(data)
+	dataTyped, err := anypb.New(data)
 	s.Require().NoError(err)
 	payloadMsg := &protobuf.PayloadV1{
 		FormatVersion: "1.0",
@@ -113,7 +113,7 @@ func (s *EncoderTestSuite) TestExtractData() {
 			Headers:   map[string]string{"foo": "bar"},
 		},
 		Schema: "vehicle_created/1.0",
-		Data:   any,
+		Data:   dataTyped,
 	}
 	payload, err := proto.Marshal(payloadMsg)
 	s.Require().NoError(err)
@@ -130,7 +130,7 @@ func (s *EncoderTestSuite) TestExtractData() {
 		Schema:        "vehicle_created/1.0",
 		FormatVersion: semver.MustParse("1.0"),
 	}, metaAttrs)
-	s.Equal(any.String(), extractedData.(*anypb.Any).String())
+	s.Equal(dataTyped.String(), extractedData.(*anypb.Any).String())
 }
 
 func (s *EncoderTestSuite) TestExtractDataInvalid() {
@@ -145,7 +145,7 @@ func (s *EncoderTestSuite) TestExtractDataInvalid() {
 func (s *EncoderTestSuite) TestExtractDataInvalidFormatVersion() {
 	vehicleID := "C_123"
 	data := &internal.VehicleCreatedV1{VehicleId: &vehicleID}
-	any, err := anypb.New(data)
+	dataTyped, err := anypb.New(data)
 	s.Require().NoError(err)
 	payloadMsg := &protobuf.PayloadV1{
 		FormatVersion: "foobar",
@@ -156,7 +156,7 @@ func (s *EncoderTestSuite) TestExtractDataInvalidFormatVersion() {
 			Headers:   map[string]string{"foo": "bar"},
 		},
 		Schema: "vehicle_created/1.0",
-		Data:   any,
+		Data:   dataTyped,
 	}
 	payload, err := proto.Marshal(payloadMsg)
 	s.Require().NoError(err)
@@ -194,11 +194,11 @@ func (s *EncoderTestSuite) TestDecodeData() {
 func (s *EncoderTestSuite) TestDecodeDataContainerized() {
 	vehicleID := "C_123"
 	data := &internal.VehicleCreatedV1{VehicleId: &vehicleID}
-	any, err := anypb.New(data)
+	dataTyped, err := anypb.New(data)
 	s.Require().NoError(err)
 	messageType := "vehicle_created"
 	version := semver.MustParse("1.0")
-	decodedDataMsg, err := s.encoder.DecodeData(messageType, version, any)
+	decodedDataMsg, err := s.encoder.DecodeData(messageType, version, dataTyped)
 	s.NoError(err)
 	s.Equal(data.String(), decodedDataMsg.(*internal.VehicleCreatedV1).String())
 }

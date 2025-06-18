@@ -418,7 +418,7 @@ func (s *BackendTestSuite) TestAck() {
 	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*200)
 	defer cancel()
 	testutils.RunAndWait(func() {
-		err := s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(ctx, func(_ context.Context, message *pubsub.Message) {
+		err := s.client.Subscription("hedwig-dev-myapp-dev-user-created-v1").Receive(ctx, func(_ context.Context, _ *pubsub.Message) {
 			s.Fail("shouldn't have received any message")
 		})
 		s.Require().NoError(err)
@@ -558,36 +558,36 @@ func (s *BackendTestSuite) TearDownSuite() {
 	}()
 	subscriptions := s.client.Subscriptions(ctx)
 	for {
-		if subscription, err := subscriptions.Next(); err == iterator.Done {
+		subscription, err := subscriptions.Next()
+		if err == iterator.Done {
 			break
 		} else if err != nil {
 			panic(fmt.Sprintf("failed to delete subscriptions with error: %v", err))
-		} else {
-			err = subscription.Delete(ctx)
-			s.Require().NoError(err)
 		}
+		err = subscription.Delete(ctx)
+		s.Require().NoError(err)
 	}
 	topics := s.client.Topics(ctx)
 	for {
-		if topic, err := topics.Next(); err == iterator.Done {
+		topic, err := topics.Next()
+		if err == iterator.Done {
 			break
 		} else if err != nil {
 			panic(fmt.Sprintf("failed to delete topics with error: %v", err))
-		} else {
-			err = topic.Delete(ctx)
-			s.Require().NoError(err)
 		}
+		err = topic.Delete(ctx)
+		s.Require().NoError(err)
 	}
 	topics = s.otherProjectClient.Topics(ctx)
 	for {
-		if topic, err := topics.Next(); err == iterator.Done {
+		topic, err := topics.Next()
+		if err == iterator.Done {
 			break
 		} else if err != nil {
 			panic(fmt.Sprintf("failed to delete topics with error: %v", err))
-		} else {
-			err = topic.Delete(ctx)
-			s.Require().NoError(err)
 		}
+		err = topic.Delete(ctx)
+		s.Require().NoError(err)
 	}
 }
 
@@ -620,14 +620,14 @@ func (s *BackendTestSuite) TearDownTest() {
 	ctx := context.Background()
 	subscriptions := s.client.Subscriptions(ctx)
 	for {
-		if subscription, err := subscriptions.Next(); err == iterator.Done {
+		subscription, err := subscriptions.Next()
+		if err == iterator.Done {
 			break
 		} else if err != nil {
 			panic(fmt.Sprintf("failed to drain subscriptions with error: %v", err))
-		} else {
-			err = subscription.SeekToTime(ctx, time.Now())
-			s.Require().NoError(err)
 		}
+		err = subscription.SeekToTime(ctx, time.Now())
+		s.Require().NoError(err)
 	}
 }
 

@@ -48,7 +48,7 @@ type Metadata struct {
 }
 
 // Publish a message represented by the payload, with specified attributes to the specific topic
-func (b *Backend) Publish(ctx context.Context, message *hedwig.Message, payload []byte, attributes map[string]string, topic string) (string, error) {
+func (b *Backend) Publish(ctx context.Context, _ *hedwig.Message, payload []byte, attributes map[string]string, topic string) (string, error) {
 	err := b.ensureClient(ctx)
 	if err != nil {
 		return "", err
@@ -109,7 +109,7 @@ func (b *Backend) Receive(ctx context.Context, numMessages uint32, visibilityTim
 			pubsubSubscription.ReceiveSettings.MaxExtensionPeriod = defaultVisibilityTimeoutS
 		}
 		group.Go(func() error {
-			recvErr := pubsubSubscription.Receive(gctx, func(ctx context.Context, message *pubsub.Message) {
+			recvErr := pubsubSubscription.Receive(gctx, func(_ context.Context, message *pubsub.Message) {
 				// deliveryAttempt is nil for subscriptions without a dlq
 				deliveryAttemptDefault := -1
 				if message.DeliveryAttempt == nil {
@@ -211,7 +211,7 @@ func (b *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 
 	publishErrCh := make(chan error, 1)
 	defer close(publishErrCh)
-	err = pubsubSubscription.Receive(rctx, func(ctx context.Context, message *pubsub.Message) {
+	err = pubsubSubscription.Receive(rctx, func(_ context.Context, message *pubsub.Message) {
 		ticker.Reset(overallTimeout)
 		result := clientTopic.Publish(rctx, message)
 		_, err := result.Get(rctx)
@@ -246,13 +246,13 @@ func (b *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 }
 
 // NackMessage nacks a message on the queue
-func (b *Backend) NackMessage(ctx context.Context, providerMetadata interface{}) error {
+func (b *Backend) NackMessage(_ context.Context, providerMetadata interface{}) error {
 	providerMetadata.(Metadata).pubsubMessage.Nack()
 	return nil
 }
 
 // AckMessage acknowledges a message on the queue
-func (b *Backend) AckMessage(ctx context.Context, providerMetadata interface{}) error {
+func (b *Backend) AckMessage(_ context.Context, providerMetadata interface{}) error {
 	providerMetadata.(Metadata).pubsubMessage.Ack()
 	return nil
 }

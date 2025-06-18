@@ -80,7 +80,7 @@ func xVersionsExt() jsonschema.Extension {
 	if err != nil {
 		panic(err)
 	}
-	compile := func(ctx jsonschema.CompilerContext, m map[string]interface{}) (interface{}, error) {
+	compile := func(_ jsonschema.CompilerContext, m map[string]interface{}) (interface{}, error) {
 		if xVersion, ok := m["x-version"]; ok {
 			if xVersionStr, ok := xVersion.(string); ok {
 				version, err := semver.NewVersion(xVersionStr)
@@ -94,7 +94,7 @@ func xVersionsExt() jsonschema.Extension {
 		}
 		return nil, nil
 	}
-	validate := func(ctx jsonschema.ValidationContext, s interface{}, v interface{}) error {
+	validate := func(_ jsonschema.ValidationContext, _ interface{}, _ interface{}) error {
 		return nil
 	}
 	return jsonschema.Extension{
@@ -327,7 +327,7 @@ func (ed *EncoderDecoder) DecodeMessageType(schema string) (string, *semver.Vers
 }
 
 // ExtractData extracts data from the on-the-wire payload when not using message transport
-func (ed *EncoderDecoder) ExtractData(messagePayload []byte, attributes map[string]string) (hedwig.MetaAttributes, interface{}, error) {
+func (ed *EncoderDecoder) ExtractData(messagePayload []byte, _ map[string]string) (hedwig.MetaAttributes, interface{}, error) {
 	metaAttrs := hedwig.MetaAttributes{}
 
 	err := containerSchema.Validate(bytes.NewReader(messagePayload))
