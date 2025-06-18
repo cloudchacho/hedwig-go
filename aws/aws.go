@@ -94,12 +94,12 @@ func (b *Backend) isValidForSQS(payload []byte) bool {
 	}
 	return bytes.IndexFunc(payload, func(r rune) bool {
 		//  allowed characters: #x9 | #xA | #xD | #x20 to #xD7FF | #xE000 to #xFFFD | #x10000 to #x10FFFF
-		return !(r == '\x09' || r == '\x0A' || r == '\x0D' || (r >= '\x20' && r <= '\uD7FF') || (r >= '\uE000' && r <= '\uFFFD') || (r >= '\U00010000' && r <= '\U0010FFFF'))
+		return r != '\x09' && r != '\x0A' && r != '\x0D' && (r < '\x20' || r > '\uD7FF') && (r < '\uE000' || r > '\uFFFD') && (r < '\U00010000' || r > '\U0010FFFF')
 	}) == -1
 }
 
 // Publish a message represented by the payload, with specified attributes to the specific topic
-func (b *Backend) Publish(ctx context.Context, message *hedwig.Message, payload []byte, attributes map[string]string, topic string) (string, error) {
+func (b *Backend) Publish(ctx context.Context, _ *hedwig.Message, payload []byte, attributes map[string]string, topic string) (string, error) {
 	snsTopic := b.getSNSTopic(topic)
 	var payloadStr string
 
@@ -296,7 +296,7 @@ func (b *Backend) RequeueDLQ(ctx context.Context, numMessages uint32, visibility
 }
 
 // NackMessage nacks a message on the queue
-func (b *Backend) NackMessage(ctx context.Context, providerMetadata interface{}) error {
+func (b *Backend) NackMessage(_ context.Context, _ interface{}) error {
 	// not supported by AWS
 	return nil
 }

@@ -112,7 +112,7 @@ type fakeSNS struct {
 	snsiface.SNSAPI
 }
 
-func (fs *fakeSNS) PublishWithContext(ctx aws.Context, in *sns.PublishInput, opts ...request.Option) (*sns.PublishOutput, error) {
+func (fs *fakeSNS) PublishWithContext(ctx aws.Context, in *sns.PublishInput, _ ...request.Option) (*sns.PublishOutput, error) {
 	args := fs.Called(ctx, in)
 	return args.Get(0).(*sns.PublishOutput), args.Error(1)
 }

@@ -57,7 +57,7 @@ func (p *Publisher) WithUseTransportMessageAttributes(useTransportMessageAttribu
 // NewPublisher creates a new Publisher.
 //
 // `messageRouting`: Maps message type and major version to topic names
-//   <message type>, <message version> => topic name
+// <message type>, <message version> => topic name
 // An entry is required for every message type that the app wants to publish. It is
 // recommended that major versions of a message be published on separate topics.
 func NewPublisher(backend PublisherBackend, encoderDecoder EncoderDecoder, routing MessageRouting) *Publisher {

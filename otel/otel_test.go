@@ -30,7 +30,7 @@ func (p testTracerProvider) Tracer(string, ...trace.TracerOption) trace.Tracer {
 // testTracer is an implementation of Tracer that returns instances of testSpan
 type testTracer struct{}
 
-func (t testTracer) Start(ctx context.Context, name string, _ ...trace.SpanStartOption) (context.Context, trace.Span) {
+func (t testTracer) Start(ctx context.Context, _ string, _ ...trace.SpanStartOption) (context.Context, trace.Span) {
 	span := &testSpan{}
 	return trace.ContextWithSpan(ctx, span), span
 }
