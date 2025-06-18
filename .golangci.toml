@@ -1,29 +1,60 @@
-[run]
-
-skip-files = ".*\\.pb\\.go$"
-
-timeout = "5m"
-
-[issues]
-
-max-same-issues = 0
-exclude=[
-    'declaration of "(err|ctx)" shadows declaration at',
-]
-
-[linters-settings.misspell]
-
-locale = "US"
-
-[linters-settings.govet]
-
-check-shadowing = true
-disable = ["composites"]
-
-[linters-settings.goimports]
-
-local-prefixes = "github.com/cloudchacho/hedwig-go"
+version = '2'
 
 [linters]
+enable = [
+  'misspell',
+  'revive'
+]
 
-enable = ["misspell", "gofmt", "goimports", "revive"]
+[linters.settings]
+[linters.settings.govet]
+enable = [
+  'shadow'
+]
+disable = [
+  'composites'
+]
+
+[linters.settings.misspell]
+locale = 'US'
+
+[linters.exclusions]
+generated = 'lax'
+presets = [
+  'comments',
+  'common-false-positives',
+  'legacy',
+  'std-error-handling'
+]
+paths = [
+  'third_party$',
+  'builtin$',
+  'examples$'
+]
+
+[[linters.exclusions.rules]]
+path = '(.+)\.go$'
+text = 'declaration of "(err|ctx)" shadows declaration at'
+
+[issues]
+max-same-issues = 0
+
+[formatters]
+enable = [
+  'gofmt',
+  'goimports'
+]
+
+[formatters.settings]
+[formatters.settings.goimports]
+local-prefixes = [
+  'github.com/cloudchacho/hedwig-go'
+]
+
+[formatters.exclusions]
+generated = 'lax'
+paths = [
+  'third_party$',
+  'builtin$',
+  'examples$'
+]
