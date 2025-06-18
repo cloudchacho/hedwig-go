@@ -1,6 +1,8 @@
 module github.com/cloudchacho/hedwig-go
 
-go 1.18
+go 1.22
+
+toolchain go1.22.2
 
 retract (
 	v1.0.5 // Contains retractions only.
@@ -21,7 +23,7 @@ require (
 	golang.org/x/oauth2 v0.0.0-20220822191816-0ebed06d0094
 	golang.org/x/sync v0.0.0-20220819030929-7fc1605a5dde
 	google.golang.org/api v0.94.0
-	google.golang.org/protobuf v1.28.1
+	google.golang.org/protobuf v1.36.6
 )
 
 require (
